@@ -38,7 +38,7 @@ If you want to permanently set the export settings follow the instruction below:
 
 ```bash
 $ gedit ~/.bashrc
-'''
+```
 
 Add either one of the three selection into bashrc:
 1. export TURTLEBOT3_MODEL=burger
@@ -47,7 +47,7 @@ Add either one of the three selection into bashrc:
 
 ```bash
 $ source ~/.bashrc
-'''
+```
 
 ## Running the simulation
 
@@ -55,19 +55,19 @@ $ source ~/.bashrc
 
 ```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_empty_world.launch
-'''
+```
 
 - TurtleBot3 World
 
 ```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_world.launch
-'''
+```
 
 - TurtleBot3 House
 
 ```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_house.launch
-'''
+```
 
 - To enable teleoperation on Gazebo
 
