@@ -49,7 +49,7 @@ Add either one of the three selection into bashrc:
 $ source ~/.bashrc
 ```
 
-## Running the simulation
+## Running the simulations
 
 - Empty World
 
