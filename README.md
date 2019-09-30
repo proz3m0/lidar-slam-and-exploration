@@ -48,26 +48,23 @@ Add either one of the three selection into bashrc:
 ```bash
 $ source ~/.bashrc
 ```
+## Getting RVIS up
 
-## Running the simulations
+```bash
+$ roslaunch turtlebot3_gazebo turtlebot3_gazebo_rviz.launch
+```
 
-- Empty World
+## Stage 1: Mapping using gmapping and teleoperation
+
+1. Start the simulation (choose either one)
 
 ```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_empty_world.launch
-```
-
-- TurtleBot3 World
-
-```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_world.launch
-```
-
-- TurtleBot3 House
-
-```bash
 $ roslaunch turtlebot3_gazebo turtlebot3_house.launch
 ```
+
+2. Start teleop for turtle bot
 
 - To enable teleoperation on Gazebo
 
@@ -75,10 +72,18 @@ $ roslaunch turtlebot3_gazebo turtlebot3_house.launch
 $ roslaunch turtlebot3_teleop turtlebot3_teleop_key.launch
 ```
 
-## Getting RVIS up
+3. Start turtlebot gmapping
 
 ```bash
-$ roslaunch turtlebot3_gazebo turtlebot3_gazebo_rviz.launch
+$ roslaunch turtlebot3_slam turtlebot3_gmapping.launch
 ```
+
+4. Map the entire world manually
+
+5. Saving the map
+```bash
+$ rosrun map_server map_saver
+```
+This would save the map as an occupancy grid with 2 file (.pgm and .yaml)
 
 
