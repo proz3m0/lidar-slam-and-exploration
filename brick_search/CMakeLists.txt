@@ -22,19 +22,12 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_package()
 
-include_directories(
-  include
-  ${catkin_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
-)
+add_executable(brick_search
+        src/brick_search.cpp
+        )
 
-add_executable(${PROJECT_NAME}-program src/main.cpp)
+target_include_directories(brick_search SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
+target_include_directories(brick_search PRIVATE include)
 
-add_library(${PROJECT_NAME}-BrickSearch src/BrickSearch.cpp)
-
-target_include_directories(${PROJECT_NAME}-program SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
-
-target_include_directories(${PROJECT_NAME}-program PRIVATE include)
-
-target_link_libraries(${PROJECT_NAME}-program ${OpenCV_LIBS} ${catkin_LIBRARIES})
+target_link_libraries(brick_search ${OpenCV_LIBS} ${catkin_LIBRARIES})
 
