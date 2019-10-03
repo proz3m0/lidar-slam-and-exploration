@@ -6,36 +6,6 @@
 
 #include "BrickSearch.h"
 
-double BrickSearch::wrapAngle(double angle)
-{
-  // Function to wrap an angle between 0 and 2*Pi
-  while (angle < 0.)
-  {
-    angle += 2 * M_PI;
-  }
-
-  while (angle > (2 * M_PI))
-  {
-    angle -= 2 * M_PI;
-  }
-
-  return angle;
-}
-
-geometry_msgs::Pose BrickSearch::pose2dToPose(const geometry_msgs::Pose2D& pose_2d)
-{
-  geometry_msgs::Pose pose{};
-
-  pose.position.x = pose_2d.x;
-  pose.position.y = pose_2d.y;
-
-  pose.orientation.w = std::cos(pose_2d.theta);
-  pose.orientation.z = std::sin(pose_2d.theta / 2.);
-
-  return pose;
-}
-
-
 // Constructor
 BrickSearch::BrickSearch(ros::NodeHandle& nh) : it_{ nh }
 {
@@ -86,6 +56,35 @@ BrickSearch::BrickSearch(ros::NodeHandle& nh) : it_{ nh }
   ros::ServiceClient global_localization_service_client = nh.serviceClient<std_srvs::Empty>("global_localization");
   std_srvs::Empty srv{};
   global_localization_service_client.call(srv);
+}
+
+double BrickSearch::wrapAngle(double angle)
+{
+  // Function to wrap an angle between 0 and 2*Pi
+  while (angle < 0.)
+  {
+    angle += 2 * M_PI;
+  }
+
+  while (angle > (2 * M_PI))
+  {
+    angle -= 2 * M_PI;
+  }
+
+  return angle;
+}
+
+geometry_msgs::Pose BrickSearch::pose2dToPose(const geometry_msgs::Pose2D& pose_2d)
+{
+  geometry_msgs::Pose pose{};
+
+  pose.position.x = pose_2d.x;
+  pose.position.y = pose_2d.y;
+
+  pose.orientation.w = std::cos(pose_2d.theta);
+  pose.orientation.z = std::sin(pose_2d.theta / 2.);
+
+  return pose;
 }
 
 geometry_msgs::Pose2D BrickSearch::getPose2d()

@@ -30,6 +30,8 @@ include_directories(
 
 add_executable(${PROJECT_NAME}-program src/main.cpp)
 
+add_library(${PROJECT_NAME}-BrickSearch src/BrickSearch.cpp)
+
 target_include_directories(${PROJECT_NAME}-program SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 
 target_include_directories(${PROJECT_NAME}-program PRIVATE include)

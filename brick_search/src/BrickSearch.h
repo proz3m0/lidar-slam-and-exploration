@@ -4,6 +4,9 @@
  *  @date {19 September 2019}
 */
 
+#ifndef BRICKSEARCH_H
+#define BRICKSEARCH_H
+
 #include <atomic>
 #include <cmath>
 
@@ -27,8 +30,11 @@ public:
   // Constructor
   explicit BrickSearch(ros::NodeHandle& nh);
 
+  // Destructor
+  explicit ~BrickSearch(ros::NodeHandle& nh);
+
   // Publich methods
-  void mainLoop();
+  void mainLoop(void);
 
 private:
   // Variables
@@ -63,5 +69,5 @@ private:
   geometry_msgs::Pose pose2dToPose(const geometry_msgs::Pose2D& pose_2d);
 };
 
-
+#endif //BRICKSEARCH_H
 
