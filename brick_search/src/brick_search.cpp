@@ -82,13 +82,17 @@ private:
   image_transport::ImageTransport it_;
   image_transport::Subscriber image_sub_{};
 
-  cv::Mat image_;
-  struct ImageDataBuffer {
-          std::deque<cv::Mat> imageDeq;
-          std::deque<ros::Time> timeStampDeq;
-          std::mutex buffer_mutex_;
+  // Image buffer
+  struct ImageDataBuffer
+  {
+    std::deque<cv::Mat> imageDeq;
+    std::deque<ros::Time> timeStampDeq;
+    std::mutex buffer_mutex_;
   };
+  cv::Mat image_;
+  cv::Mat depth_image_;
   ImageDataBuffer imageBuffer;
+  ImageDataBuffer depthImageBuffer;
 
   // Action client
   actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> move_base_action_client_{ "move_base", true };
@@ -97,7 +101,8 @@ private:
   geometry_msgs::Pose2D getPose2d();
   void amclPoseCallback(const geometry_msgs::PoseWithCovarianceStamped& pose_msg);
   void imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr);
-  cv::Point brickWhereAreYou(void);
+  std::vector<cv::KeyPoint> brickIGotYouInMySight(void);
+  cv::Point brickWhereAreYou(std::vector<cv::KeyPoint> keypoints);
 };
 
 // Constructor
@@ -137,6 +142,9 @@ BrickSearch::BrickSearch(ros::NodeHandle& nh) : it_{ nh }
 
   // Subscribe to the camera
   image_sub_ = it_.subscribe("/camera/rgb/image_raw", 1, &BrickSearch::imageCallback, this);
+
+  // Subscribe to the camera
+  depth_image_sub_ = it_.subscribe("/camera/depth/image_raw", 1, &BrickSearch::imageCallback, this);
 
   // Advertise "cmd_vel" publisher to control TurtleBot manually
   cmd_vel_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1, false);
@@ -230,62 +238,91 @@ void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
   ROS_INFO_STREAM("brick_found_: " << brick_found_);
 }
 
-cv::Point BrickSearch::brickWhereAreYou(void)
+std::vector<cv::KeyPoint> BrickSearch::brickIGotYouInMySight(void)
 {
-    // Variables
-    cv::Mat hsv;
-    cv::Mat mask1,mask2;
+  // Variables
+  cv::Mat hsv;
+  cv::Mat mask1,mask2;
 
-    // Extract a frame from queue
-    if(imageBuffer.imageDeq.size()>0){
-      image_ = imageBuffer.imageDeq.front();
-      imageBuffer.imageDeq.pop_front();
+  // Extract a frame from queue
+  imageBuffer.buffer_mutex_.lock();
+  if(imageBuffer.imageDeq.size()>0){
+    image_ = imageBuffer.imageDeq.front();
+    imageBuffer.imageDeq.pop_front();
+  }
+  imageBuffer.buffer_mutex_.unlock();
+
+  // Convert that frame from BGR to HSV
+  cv::cvtColor(image_, hsv, COLOR_BGR2HSV);
+
+  // Creating masks to detect the upper and lower red color.
+  cv::inRange(hsv, Scalar(0, 120, 70), Scalar(10, 255, 255), mask1);
+  cv::inRange(hsv, Scalar(170, 120, 70), Scalar(180, 255, 255), mask2);
+
+  // Generate the final mask
+  mask1 = mask1 + mask2;
+
+  // Setup SimpleBlobDetector parameters.
+  cv::SimpleBlobDetector::Params params;
+
+  // Change thresholds
+  params.minThreshold = 10;
+  params.maxThreshold = 200;
+
+  // Filter by Area.
+  params.filterByArea = true;
+  params.minArea = 1500;
+
+  // Filter by Circularity
+  params.filterByCircularity = true;
+  params.minCircularity = 0.1;
+
+  // Filter by Convexity
+  params.filterByConvexity = true;
+  params.minConvexity = 0.87;
+
+  // Filter by Inertia
+  params.filterByInertia = true;
+  params.minInertiaRatio = 0.01;
+
+  // Set up the detector with parameters
+  cv::SimpleBlobDetector detector(params);
+
+  // Detect Blobs
+  std::vector<cv::KeyPoint> keypoints;
+  detector.detect(mask1,keypoints);
+
+  // If keypoints is filled then brick is found
+  if (keypoints.empty() == false) brick_found_ = true;
+
+  // return the keypoints
+  return keypoints;
+}
+
+cv::Point BrickSearch::brickWhereAreYou(std::vector<cv::KeyPoint> keypoints)
+{
+  // Find biggest Blobs
+  int id = 0, id_max;
+  float max = 0;
+  for (auto& i:keypoints)
+  {
+    if (max < i.size)
+    {
+      max = i.size;
+      id_max = id;
     }
-    imageBuffer.buffer_mutex_.unlock();
+    id++;
+  }
 
-    // Convert that frame from BGR to HSV
-    cv::cvtColor(image_, hsv, COLOR_BGR2HSV);
+  // Extract a frame from queue
+  depthImageBuffer.buffer_mutex_.lock();
+  if(depthImageBuffer.imageDeq.size()>0){
+    depth_image_ = depthImageBuffer.imageDeq.front();
+    depthImageBuffer.imageDeq.pop_front();
+  }
+  depthImageBuffer.buffer_mutex_.unlock();
 
-    // Creating masks to detect the upper and lower red color.
-    cv::inRange(hsv, Scalar(0, 120, 70), Scalar(10, 255, 255), mask1);
-    cv::inRange(hsv, Scalar(170, 120, 70), Scalar(180, 255, 255), mask2);
-
-    // Generate the final mask
-    mask1 = mask1 + mask2;
-
-    // Setup SimpleBlobDetector parameters.
-    cv::SimpleBlobDetector::Params params;
-
-    // Change thresholds
-    params.minThreshold = 10;
-    params.maxThreshold = 200;
-
-    // Filter by Area.
-    params.filterByArea = true;
-    params.minArea = 1500;
-
-    // Filter by Circularity
-    params.filterByCircularity = true;
-    params.minCircularity = 0.1;
-
-    // Filter by Convexity
-    params.filterByConvexity = true;
-    params.minConvexity = 0.87;
-
-    // Filter by Inertia
-    params.filterByInertia = true;
-    params.minInertiaRatio = 0.01;
-
-    // Set up the detector with parameters
-    cv::SimpleBlobDetector detector(params);
-
-    // Detect Blobs
-    std::vector<cv::KeyPoint> keypoints;
-    detector.detect(mask1,keypoints);
-
-    // Check keypoints
-
-
+  depth_image_.
 
 }
 
