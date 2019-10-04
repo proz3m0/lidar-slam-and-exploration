@@ -1,7 +1,8 @@
 #include <atomic>
 #include <cmath>
-
+#include <mutex>
 #include <opencv2/core.hpp>
+#include <opencv2/features2d.hpp>
 
 #include <ros/ros.h>
 #include <nav_msgs/GetMap.h>
@@ -65,6 +66,7 @@ private:
   std::atomic<bool> localised_{ false };
   std::atomic<bool> brick_found_{ false };
   int image_msg_count_ = 0;
+  cv::Point brick_location_;
 
   // Transform listener
   tf2_ros::Buffer transform_buffer_{};
@@ -80,6 +82,14 @@ private:
   image_transport::ImageTransport it_;
   image_transport::Subscriber image_sub_{};
 
+  cv::Mat image_;
+  struct ImageDataBuffer {
+          std::deque<cv::Mat> imageDeq;
+          std::deque<ros::Time> timeStampDeq;
+          std::mutex buffer_mutex_;
+  };
+  ImageDataBuffer imageBuffer;
+
   // Action client
   actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> move_base_action_client_{ "move_base", true };
 
@@ -87,6 +97,7 @@ private:
   geometry_msgs::Pose2D getPose2d();
   void amclPoseCallback(const geometry_msgs::PoseWithCovarianceStamped& pose_msg);
   void imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr);
+  cv::Point brickWhereAreYou(void);
 };
 
 // Constructor
@@ -145,7 +156,7 @@ geometry_msgs::Pose2D BrickSearch::getPose2d()
 {
   // Lookup latest transform
   geometry_msgs::TransformStamped transform_stamped =
-      transform_buffer_.lookupTransform("map", "base_link", ros::Time(0.), ros::Duration(0.2));
+  transform_buffer_.lookupTransform("map", "base_link", ros::Time(0.), ros::Duration(0.2));
 
   // Return a Pose2D message
   geometry_msgs::Pose2D pose{};
@@ -200,7 +211,14 @@ void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
   cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
 
   // This is the OpenCV image
-  cv::Mat& image = image_ptr->image;
+  // cv::Mat& image = image_ptr->image;
+  // Storing images data in buffer
+  imageBuffer.buffer_mutex_.lock();
+  imageBuffer.imageDeq.push_back(image_ptr->image);
+  if(imageBuffer.imageDeq.size()>2) {
+    imageBuffer.imageDeq.pop_front();
+  }
+  imageBuffer.buffer_mutex_.unlock();
 
   // You can set "brick_found_" to true to signal to "mainLoop" that you have found a brick
   // You may want to communicate more information
@@ -212,9 +230,69 @@ void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
   ROS_INFO_STREAM("brick_found_: " << brick_found_);
 }
 
+cv::Point BrickSearch::brickWhereAreYou(void)
+{
+    // Variables
+    cv::Mat hsv;
+    cv::Mat mask1,mask2;
+
+    // Extract a frame from queue
+    if(imageBuffer.imageDeq.size()>0){
+      image_ = imageBuffer.imageDeq.front();
+      imageBuffer.imageDeq.pop_front();
+    }
+    imageBuffer.buffer_mutex_.unlock();
+
+    // Convert that frame from BGR to HSV
+    cv::cvtColor(image_, hsv, COLOR_BGR2HSV);
+
+    // Creating masks to detect the upper and lower red color.
+    cv::inRange(hsv, Scalar(0, 120, 70), Scalar(10, 255, 255), mask1);
+    cv::inRange(hsv, Scalar(170, 120, 70), Scalar(180, 255, 255), mask2);
+
+    // Generate the final mask
+    mask1 = mask1 + mask2;
+
+    // Setup SimpleBlobDetector parameters.
+    cv::SimpleBlobDetector::Params params;
+
+    // Change thresholds
+    params.minThreshold = 10;
+    params.maxThreshold = 200;
+
+    // Filter by Area.
+    params.filterByArea = true;
+    params.minArea = 1500;
+
+    // Filter by Circularity
+    params.filterByCircularity = true;
+    params.minCircularity = 0.1;
+
+    // Filter by Convexity
+    params.filterByConvexity = true;
+    params.minConvexity = 0.87;
+
+    // Filter by Inertia
+    params.filterByInertia = true;
+    params.minInertiaRatio = 0.01;
+
+    // Set up the detector with parameters
+    cv::SimpleBlobDetector detector(params);
+
+    // Detect Blobs
+    std::vector<cv::KeyPoint> keypoints;
+    detector.detect(mask1,keypoints);
+
+    // Check keypoints
+
+
+
+}
+
 void BrickSearch::mainLoop()
 {
-  // Wait for the TurtleBot to localise
+  // WAIT FOR THE TURTLEBOT TO LOCALALISE
+  //  Wait for the TurtleBot to localise
   ROS_INFO("Localising...");
   while (ros::ok())
   {
