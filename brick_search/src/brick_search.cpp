@@ -66,7 +66,6 @@ private:
   cv::Mat map_image_{};
   std::atomic<bool> localised_{ false };
   std::atomic<bool> brick_found_{ false };
-  int image_msg_count_ = 0;
   std::vector<cv::KeyPoint> keypoints_;
   cv::Point brick_location_;
 
@@ -89,6 +88,7 @@ private:
   // Image buffer
   struct ImageDataBuffer
   {
+    int image_msg_count_ = 0;
     std::deque<cv::Mat> imageDeq_;
     std::mutex buffer_mutex_;
   };
@@ -207,10 +207,14 @@ void BrickSearch::amclPoseCallback(const geometry_msgs::PoseWithCovarianceStampe
     amcl_pose_sub_.shutdown();
   }
 }
+
 void BrickSearch::brickIGotYouInMySight(void)
 {
   // Variables
   cv::Mat hsv,mask1,mask2;
+
+  // Convert that frame to seen color
+  cv::cvtColor(image_,image_,cv::COLOR_BGR2RGB);
 
   // Convert that frame from BGR to HSV
   cv::cvtColor(image_, hsv, cv::COLOR_BGR2HSV);
@@ -222,6 +226,7 @@ void BrickSearch::brickIGotYouInMySight(void)
   // Generate the final mask
   mask1 = mask1 + mask2;
   cv::bitwise_not(mask1,mask1);
+  cv::copyMakeBorder(mask1,mask1,1,1,1,1,cv::BORDER_CONSTANT,255);
 
   // Setup SimpleBlobDetector parameters.
   cv::SimpleBlobDetector::Params params;
@@ -232,12 +237,13 @@ void BrickSearch::brickIGotYouInMySight(void)
   params.maxThreshold = 220;
 
   // Filter by Color
-  params.filterByColor = false;
+  params.filterByColor = true;
+  params.blobColor = 0;
 
   // Filter by Area.
   params.filterByArea = true;
   params.minArea = 1000;
-  params.maxArea = 700000;
+  params.maxArea = 2076601;
 
   // Filter by Circularity
   params.filterByCircularity = false;
@@ -256,11 +262,13 @@ void BrickSearch::brickIGotYouInMySight(void)
   ROS_INFO_STREAM("Size of keypoints: " << keypoints_.size());
     
   // If keypoints is filled then brick is found
-  if (keypoints_.empty() == false)
-  {
-      brick_found_ = true;
-      ROS_INFO("BRICK IS FOUND");
-  }
+  if (keypoints_.empty() == true) brick_found_ = false;
+  else brick_found_ = true;
+
+  // Published the blob image on rqt_image_view
+  cv::drawKeypoints(mask1,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
+  test_image_pub_.publish(msg);
 }
 
 void BrickSearch::brickWhereAreYou(void)
@@ -282,9 +290,8 @@ void BrickSearch::brickWhereAreYou(void)
   cv::Point2f blob_centre = keypoints_.at(id_max).pt;
 
   // *FIND_THE_POSITION_OF_BRICK_IN_3D*
-  //
+
   depthImageBuffer.buffer_mutex_.lock();
-  depthImageBuffer.imageDeq_.push_back(image_ptr->image);
   if(imageBuffer.imageDeq_.size()>2)
   {
     depth_image_ = depthImageBuffer.imageDeq_.front();
@@ -297,14 +304,14 @@ void BrickSearch::depthImageCallback(const sensor_msgs::ImageConstPtr& image_msg
 {
   // Use this method to identify when the brick is visible
   // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
-  if (image_msg_count_ < 15)
+  if (depthImageBuffer.image_msg_count_ < 25)
   {
-    image_msg_count_++;
+    depthImageBuffer.image_msg_count_++;
     return;
   }
   else
   {
-    image_msg_count_ = 0;
+    depthImageBuffer.image_msg_count_= 0;
   }
 
   // Copy the image message to a cv_bridge image pointer
@@ -325,17 +332,16 @@ void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
 {
   // Use this method to identify when the brick is visible
   // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
-  if (image_msg_count_ < 15)
+  if (imageBuffer.image_msg_count_ < 25)
   {
-    image_msg_count_++;
+    imageBuffer.image_msg_count_++;
     return;
   }
   else
   {
-    image_msg_count_ = 0;
+    imageBuffer.image_msg_count_ = 0;
   }
 
-  // *FIND_THE_BRICK*
   // Copy the image message to a cv_bridge image pointer
   cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
 
@@ -346,16 +352,14 @@ void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
   {
     image_ = imageBuffer.imageDeq_.front();
     imageBuffer.imageDeq_.pop_front();
-    cv::cvtColor(image_,image_,cv::COLOR_BGR2RGB);
+
+    // Check if brick is founded
     BrickSearch::brickIGotYouInMySight();
-    cv::drawKeypoints(image_,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
-    test_image_pub_.publish(msg);
+
+    // Clear keypoints for next search
+    keypoints_.clear();
   }
   imageBuffer.buffer_mutex_.unlock();
-
-  // Locate the 3D position of brick
-  if (brick_found_ == true) BrickSearch::brickWhereAreYou();
 
   // Inform current state
   ROS_INFO("imageCallback");
@@ -367,19 +371,6 @@ void BrickSearch::mainLoop()
   while (ros::ok())
   {
     ROS_INFO("mainLoop");
-
-    /* Get the state of the goal
-    actionlib::SimpleClientGoalState state = move_base_action_client_.getState();
-
-    if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
-    {
-      // Print the state of the goal
-      ROS_INFO_STREAM(state.getText());
-
-      // Shutdown when done
-      ros::shutdown();
-    }*/
-
     // Delay so the loop doesn't run too fast
     ros::Duration(0.2).sleep();
   }
