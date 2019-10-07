@@ -4,7 +4,7 @@ MazeExplorer::MazeExplorer(ros::NodeHandle nh):
 nh_(nh)
 {
     // normalize pgm 0 - 4096 range to 0 - 255
-    cv::Mat img = cv::imread("map.pgm");
+    cv::Mat img = cv::imread("map_real.pgm");
     img.convertTo(img, CV_8U, 255.0 / 4096.0);
 
     cv::normalize(img, img, 0, 255, cv::NORM_MINMAX);
@@ -87,10 +87,10 @@ void MazeExplorer::findIntersection()
                 //sequence is up down left right
                 std::vector<bool> result;
 
-                result = vhTrace(13, row, col);
+                result = vhTrace(18, row, col);
                 if(isIntersection(result) == true){
                     map_.at<cv::Vec3b>(row,col) = green;
-                    addIntersectionSquare(13,current_point);
+                    addIntersectionSquare(18,current_point);
                     intersectionpoint_.push_back(current_point);
                 }
 
