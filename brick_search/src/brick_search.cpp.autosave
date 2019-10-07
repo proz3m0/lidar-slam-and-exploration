@@ -284,13 +284,10 @@ void BrickSearch::brickWhereAreYou(void)
   // *FIND_THE_POSITION_OF_BRICK_IN_3D*
   //
   depthImageBuffer.buffer_mutex_.lock();
-  depthImageBuffer.imageDeq_.push_back(image_ptr->image);
-  if(imageBuffer.imageDeq_.size()>2)
-  {
-    depth_image_ = depthImageBuffer.imageDeq_.front();
-    depthImageBuffer.imageDeq_.pop_front();
-  }
+  cv::Mat temp_image = depth_image_;
   depthImageBuffer.buffer_mutex_.unlock();
+  
+  
 }
 
 void BrickSearch::depthImageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
