@@ -1,0 +1,3 @@
+geometry_msgs/PoseStamped robot_pose
+---
+geometry_msgs/PoseStamped[] path

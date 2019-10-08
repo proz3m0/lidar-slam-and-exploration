@@ -1,0 +1,20 @@
+<!-- -->
+<launch>
+    <!-- *********************************** -->
+    <!--         CONFIG               -->
+    <!-- *********************************** -->
+    <arg name="robot_frame"       default="camera_link_left"/>
+    <arg name="map_name"                default="$(find slam_to_loc)/maps/test_map"/>
+
+    <!-- *********************************** -->
+    <!--                NODES                -->
+    <!-- *********************************** -->
+
+    <!-- Map Saver -->
+    <node name="MapSaver"           pkg="slam_to_loc" type="map_saver"  output="screen">
+        <param name="map_name"            type="string"       value="$(arg map_name)"/>
+    </node>
+    <!-- Slam to Loc pose -->
+    <node name="SlamtoLoc"           pkg="slam_to_loc" type="slam_to_loc_pose"  output="screen">
+    </node>
+</launch>

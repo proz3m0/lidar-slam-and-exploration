@@ -1,30 +1,7 @@
-# lidar-slam-and-exploration
+# slam-to-loc
 
-A turtlebot3 simulation ros packages to perform Simultaneous Localisation and Mapping (SLAM) of an unknown environment with frontier exploration and opencv object detection.
+A package that allows seamless transition from teleoperated slam to autonomous naviagation with localisation
 
-## Dependencies
-
-This ROS package is created for Ubuntu Xenial (16.04) + ROS Kinetic Kame.
-
-Please install catkin_tools to use 'catkin build' insteat of 'catkin make'
-
-```bash
-sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu `lsb_release -sc` main" > /etc/apt/sources.list.d/ros-latest.list'
-wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
-sudo apt-get update
-sudo apt-get install python-catkin-tools
-```
-
-## Installation
-
-```bash
-mkdir -p ~/catkin_ws/src
-cd catkin_ws/src
-git clone https://github.com/UTSAnonymous/lidar-slam-and-exploration.git
-cd ..
-catkin build
-source devel/setup.bash
-```
 
 ## Setting up
 
@@ -47,11 +24,6 @@ Add either one of the three selection into bashrc:
 
 ```bash
 source ~/.bashrc
-```
-## Getting RVIS up
-
-```bash
-roslaunch turtlebot3_gazebo turtlebot3_gazebo_rviz.launch
 ```
 
 ## Stage 1: Mapping using gmapping and teleoperation
@@ -80,10 +52,15 @@ roslaunch turtlebot3_slam turtlebot3_slam.launch
 
 4. Map the entire world manually
 
-5. Saving the map
+5. Start the slam-to-loc and wait till pose saved comes up
 ```bash
-rosrun map_server map_saver
+roslaunch slam-to-loc slam-to-loc.launch
 ```
-This would save the map as an occupancy grid with 2 file (.pgm and .yaml)
+
+6. Start turtlebot navigation node ensuring that the map argument in the launch file is the same as the map argument in the slam-to-loc launch file
+```bash
+roslaunch turtlebot3_navigation turtlebot3_navigation.launch
+```
+The slam-to-loc node will have saved the map and publish the intital pose than shutdown, naviagation can now begin
 
 

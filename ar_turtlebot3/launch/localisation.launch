@@ -1,11 +1,25 @@
 <launch>
-  <!-- Arguments -->
-  <arg name="scan_topic"     default="scan"/>
-  <arg name="initial_pose_x" default="-2.0"/>
-  <arg name="initial_pose_y" default="-0.5"/>
-  <arg name="initial_pose_a" default="0.0"/>
+	
+	<!-- Arguments -->
+    <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+	<arg name="map" default="$(find ar_turtlebot3)/saved_map/turtlebot_world.yaml"/>
+	<arg name="scan_topic"     default="scan"/>
+  	<arg name="initial_pose_x" default="-2.0"/>
+  	<arg name="initial_pose_y" default="-0.5"/>
+  	<arg name="initial_pose_a" default="0.0"/>
 
-  <!-- AMCL -->
+	<!-- Turtlebot3 simulation -->
+	<include file = "$(find turtlebot3_gazebo)/launch/turtlebot3_world.launch"/>
+
+	<!-- Turtlebot3 -->
+	<include file="$(find turtlebot3_bringup)/launch/turtlebot3_remote.launch">
+		<arg name="model" value="$(arg model)" />
+	</include>
+
+	<!-- run map server for the same world -->
+	<node pkg="map_server" type="map_server" name="map_server" args="$(arg map)"/>
+
+	<!-- AMCL -->
   <node pkg="amcl" type="amcl" name="amcl">
 
     <param name="min_particles"             value="500"/>
@@ -43,4 +57,6 @@
     <param name="base_frame_id"             value="base_footprint"/>
 
   </node>
+
+
 </launch>
