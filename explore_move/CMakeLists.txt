@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
   tf2_ros
   tf2_sensor_msgs
+  maze_explorer
 )
 
 ## System dependencies are found with CMake's conventions
@@ -63,10 +64,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate services in the 'srv' folder
- add_service_files(
-   FILES
-   RequestMazePath.srv
- )
+# add_service_files(
+ #  FILES
+   #RequestMazePath.srv
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -76,10 +77,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
- generate_messages(
-   DEPENDENCIES
-   geometry_msgs
- )
+# generate_messages(
+ #  DEPENDENCIES
+ #  geometry_msgs
+ #)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -142,7 +143,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME}_node src/explore_move.cpp)
-add_executable(explore_move_test src/test_explore_move_path.cpp)
+#add_executable(explore_move_test src/test_explore_move_path.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -152,15 +153,15 @@ add_executable(explore_move_test src/test_explore_move_path.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(explore_move_test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(explore_move_test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
  target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES}
  )
-target_link_libraries(explore_move_test
-        ${catkin_LIBRARIES}
-        )
+#target_link_libraries(explore_move_test
+  #      ${catkin_LIBRARIES}
+ #       )
 
 #############
 ## Install ##

@@ -1,0 +1,9 @@
+<launch>
+
+	<!-- AMCL localisation -->	
+	<include file="$(find turtlebot3_navigation)/launch/turtlebot3_navigation_run.launch"/>
+
+	<!-- Maze Explorer -->
+	<node pkg="maze_explorer" type="maze_explorer" name="maze_explorer"/>
+
+</launch>

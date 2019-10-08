@@ -13,7 +13,7 @@
 #include <ros/package.h>
 #include <std_msgs/Bool.h>
 
-#include "explore_move/RequestMazePath.h"
+#include "maze_explorer/RequestMazePath.h"
 
 /** \brief class for exploration*/
 class ExploreMove {
@@ -130,7 +130,7 @@ public:
         // Advertises publishers
         pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>(pose_topic, 10);
         // Sets up services
-        req_path_client_ = nh_.serviceClient<explore_move::RequestMazePath>(req_path_topic);
+        req_path_client_ = nh_.serviceClient<maze_explorer::RequestMazePath>(req_path_topic);
         // Sets up subscribers
         brick_found_sub_ = nh_.subscribe<std_msgs::Bool>(brick_found_topic, 10, &ExploreMove::brickFoundCallback, this);
 
@@ -169,7 +169,7 @@ public:
         } while(!transform_success);
 
         // Sets up path service
-        explore_move::RequestMazePath req_path_serv;
+        maze_explorer::RequestMazePath req_path_serv;
         req_path_serv.request.robot_pose.header.frame_id = map_frame_;
         tf2::toMsg(tf, req_path_serv.request.robot_pose.pose);
 

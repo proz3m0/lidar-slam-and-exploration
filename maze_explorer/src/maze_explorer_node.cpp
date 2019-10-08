@@ -1,8 +1,9 @@
 #include "maze_explorer_node.h"
 
 MazeExplorer::MazeExplorer(ros::NodeHandle nh):
-nh_(nh)
-{
+nh_(nh), checkedMapMetadata_(false)
+{   
+    /*
     // normalize pgm 0 - 4096 range to 0 - 255
     cv::Mat img = cv::imread("map_real.pgm");
     img.convertTo(img, CV_8U, 255.0 / 4096.0);
@@ -12,14 +13,14 @@ nh_(nh)
     map_ = img;
     robotStartingPose_.row = 212;  //row
     robotStartingPose_.col = 154;  //col
-
-    checkedMapMetadata_ = false;
-
+    */
     // advertisers and publishers
     occupMapSub_ = nh_.subscribe("/map",500, &MazeExplorer::occupMapCB, this);
 
     // create a service server
-    exploreServer_ = nh_.advertiseService("/get_explore_path", &MazeExplorer::exploreMazeAlgorithm, this);
+    exploreServer_ = nh_.advertiseService("/request_path", &MazeExplorer::exploreMazeAlgorithm, this);
+
+    ROS_INFO("Maze Explorer service initialized");
 };
 
 //======================== ROS ========================//
@@ -27,6 +28,8 @@ nh_(nh)
 void MazeExplorer::occupMapCB(const nav_msgs::OccupancyGrid::ConstPtr &data)
 {
     occupMap_.mutex.lock();
+
+    ROS_INFO("Got map from map server.");
 
     if(checkedMapMetadata_ == false)
     {
@@ -43,16 +46,18 @@ void MazeExplorer::occupMapCB(const nav_msgs::OccupancyGrid::ConstPtr &data)
 bool MazeExplorer::exploreMazeAlgorithm(maze_explorer::RequestMazePath::Request  &req,
                                         maze_explorer::RequestMazePath::Response &res)
 {
+    ROS_INFO("Converting ogmap to opencv image");
     convertOccupancyGrid();
 
+    ROS_INFO("Converting robot pose from global to local coordinate");
     robotStartingPose_ = globalToLocal(req.robot_pose.pose);
 
-    dilateOccupiedSpace(8);
+    ROS_INFO("Running exploration algorithm");
+    dilateOccupiedSpace(10);
     findIntersection();
     //showMap();
     arrangeQueue();
     //showQueuedPoint();
-
     res.path = getIntersectionPose();
 
     return true;
@@ -311,23 +316,23 @@ void MazeExplorer::convertOccupancyGrid()
     double resolution;
     
     nav_msgs::OccupancyGrid ogmap;
-
     occupMap_.mutex.lock();
     ogmap = occupMap_.data;
     occupMap_.mutex.unlock();
-
     cv::Mat cvmap(ogmap.info.width, ogmap.info.height, CV_8UC3, cv::Scalar(127, 127, 127));
 
     for(int x = 0; x < ogmap.info.width; x++){
-        for(int y = 0; x < ogmap.info.height; y++){
+        for(int y = 0; y < ogmap.info.height; y++){
 
             // opencv local coordinates
-            px = ogmap.info.width - x;
-            py = ogmap.info.height - y;
+            //px = ogmap.info.width - x;
+            //py = ogmap.info.height - y;
+            px = ogmap.info.width - y;
+            py = x;
 
             int val = ogmap.data[x+ ogmap.info.width * y];
 
-            if(val < OCCUPIED_THRES) cvmap.at<cv::Vec3b>(px,py) = white;
+            if(val < OCCUPIED_THRES && val >= 0) cvmap.at<cv::Vec3b>(px,py) = white;
             else if(val >= OCCUPIED_THRES) cvmap.at<cv::Vec3b>(px,py) = black;
             else cvmap.at<cv::Vec3b>(px,py) = grey;
         }
