@@ -12,6 +12,7 @@
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <std_msgs/Bool.h>
+#include <std_srvs/Trigger.h>
 
 #include "maze_explorer/RequestMazePath.h"
 
@@ -27,6 +28,8 @@ private:
     ros::Publisher pose_pub_;
     /** \brief ros service client to get exploration path */
     ros::ServiceClient req_path_client_;
+    /** \brief ros service for exploration start */
+    ros::ServiceServer start_explore_srv_;
     /** \brief ros subscriber to check whether brick has been found*/
     ros::Subscriber brick_found_sub_;
     /** \brief tf2 buffer for transforms */
@@ -59,6 +62,8 @@ private:
     *********************************************************************/
     /** \brief sets true when brick has been found */
     bool brick_found_;
+    /** \brief bool to start exploration*/
+    bool start_;
     /*********************************************************************
         * PRIVATE FUNCTIONS
     *********************************************************************/
@@ -85,7 +90,8 @@ private:
       * \param path_pose
       * \param robot_pose*/
     void setPathTF() {
-        for(auto pose:path_) {
+        for(auto&& pose:path_) {
+            pose.header.frame_id = map_frame_;
             tf2::Transform tf;
             tf2::fromMsg(pose.pose, tf);
             path_tf_.push_back(tf);
@@ -114,7 +120,7 @@ public:
     /** \brief CameraOGMap constructor
       * \param nh nodehandle */
     ExploreMove(ros::NodeHandle nh)
-            : nh_(nh), tf2_listener_(tf2_buffer_), brick_found_(false), path_count_(0) {
+            : nh_(nh), tf2_listener_(tf2_buffer_), brick_found_(false), start_(false), path_count_(0) {
         // Nodehande for input
         ros::NodeHandle pn("~");
 
@@ -123,14 +129,16 @@ public:
         pn.param<std::string>("map_frame", map_frame_, "map");
 
         // Sets up subscribers, publishers and services
-        std::string pose_topic, req_path_topic, brick_found_topic;
+        std::string pose_topic, req_path_topic, brick_found_topic, start_explore_topic;
         pn.param<std::string>("move_base_pose_topic", pose_topic, "/move_base_simple/goal");
         pn.param<std::string>("req_path_topic", req_path_topic, "/request_path");
         pn.param<std::string>("brick_found_topic", brick_found_topic, "/brick_found");
+        pn.param<std::string>("start_explore_topic", start_explore_topic, "/start_explore");
         // Advertises publishers
         pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>(pose_topic, 10);
         // Sets up services
         req_path_client_ = nh_.serviceClient<maze_explorer::RequestMazePath>(req_path_topic);
+        start_explore_srv_ = nh_.advertiseService(start_explore_topic, &ExploreMove::startExploreCallback, this);
         // Sets up subscribers
         brick_found_sub_ = nh_.subscribe<std_msgs::Bool>(brick_found_topic, 10, &ExploreMove::brickFoundCallback, this);
 
@@ -148,11 +156,18 @@ public:
     void brickFoundCallback(const std_msgs::BoolConstPtr &brick_found_msg) {
         brick_found_ = brick_found_msg->data;
     }
+    /** \brief callback function for brick found */
+    bool startExploreCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res) {
+        start_ = true;
+    }
     /*********************************************************************
         * THREADS
     *********************************************************************/
     /** \brief thread that saves the map to base_frame tf */
     void pathFollowThread(){
+
+        // busy wait before starting
+        while(!start_)ros::Duration(0.5).sleep();;
 
         // Delay to allow for initialisation
         ros::Duration(0.5).sleep();

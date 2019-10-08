@@ -4,12 +4,15 @@
   <arg name="initial_pose_x" default="0.0"/>
   <arg name="initial_pose_y" default="0.0"/>
   <arg name="initial_pose_a" default="0.0"/>
+  <arg name="initial_cov_xx" default="0.5"/>
+  <arg name="initial_cov_yy" default="0.5"/>
+  <arg name="initial_cov_aa" default="0.26179938779"/>
 
   <!-- AMCL -->
   <node pkg="amcl" type="amcl" name="amcl">
 
-    <param name="min_particles"             value="500"/>
-    <param name="max_particles"             value="3000"/>
+    <param name="min_particles"             value="4000"/>
+    <param name="max_particles"             value="5000"/>
     <param name="kld_err"                   value="0.02"/>
     <param name="update_min_d"              value="0.20"/>
     <param name="update_min_a"              value="0.20"/>
@@ -20,6 +23,9 @@
     <param name="initial_pose_x"            value="$(arg initial_pose_x)"/>
     <param name="initial_pose_y"            value="$(arg initial_pose_y)"/>
     <param name="initial_pose_a"            value="$(arg initial_pose_a)"/>
+    <param name="initial_cov_xx"            value="$(arg initial_cov_xx)"/>
+    <param name="initial_cov_yy"            value="$(arg initial_cov_yy)"/>
+    <param name="initial_cov_aa"            value="$(arg initial_cov_aa)"/>
     <param name="gui_publish_rate"          value="50.0"/>
 
     <remap from="scan"                      to="$(arg scan_topic)"/>
