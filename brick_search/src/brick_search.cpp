@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cmath>
 #include <mutex>
+
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -16,6 +17,9 @@
 #include <cv_bridge/cv_bridge.h>
 #include <actionlib/client/simple_action_client.h>
 #include <move_base_msgs/MoveBaseAction.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <message_filters/subscriber.h>
+
 
 namespace
 {
@@ -67,7 +71,7 @@ private:
   std::atomic<bool> localised_{ false };
   std::atomic<bool> brick_found_{ false };
   std::vector<cv::KeyPoint> keypoints_;
-  cv::Point brick_location_;
+  cv::Point3f brick_location_;
 
   // Transform listener
   tf2_ros::Buffer transform_buffer_{};
@@ -89,14 +93,27 @@ private:
   struct ImageDataBuffer
   {
     int image_msg_count_ = 0;
+    std::atomic<bool> ready_{ false };
     std::deque<cv::Mat> imageDeq_;
     std::mutex buffer_mutex_;
   };
+  ImageDataBuffer imageBuffer;
+  ImageDataBuffer depthImageBuffer;
   cv::Mat image_;
   cv::Mat depth_image_;
   cv::Mat test_image_;
-  ImageDataBuffer imageBuffer;
-  ImageDataBuffer depthImageBuffer;
+
+  // Camera info subscriber
+  ros::Subscriber camera_info_sub_{};
+
+  // Camera info buffer
+  struct CameraInfoBuffer
+  {
+    std::deque<sensor_msgs::CameraInfoConstPtr> cameraInfoDeq_;
+    std::mutex buffer_mutex_;
+  };
+  CameraInfoBuffer cameraBuffer;
+  sensor_msgs::CameraInfoConstPtr camera_info_;
 
   // Action client
   actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> move_base_action_client_{ "move_base", true };
@@ -106,6 +123,7 @@ private:
   void amclPoseCallback(const geometry_msgs::PoseWithCovarianceStamped& pose_msg);
   void imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr);
   void depthImageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr);
+  void cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& info_msg_ptr);
   void brickIGotYouInMySight(void);
   void brickWhereAreYou(void);
 };
@@ -145,10 +163,13 @@ BrickSearch::BrickSearch(ros::NodeHandle& nh) : it_{ nh }
   // Subscribe to "amcl_pose" to get pose covariance
   amcl_pose_sub_ = nh.subscribe("amcl_pose", 1, &BrickSearch::amclPoseCallback, this);
 
-  // Subscribe to the camera
+  // Subscribe to the camera for RGB image
   image_sub_ = it_.subscribe("/camera/rgb/image_raw", 1, &BrickSearch::imageCallback, this);
 
-  // Subscribe to the camera
+  // Subscribe to the RGB camera for RGB info
+  camera_info_sub_ = nh.subscribe("/camera/rgb/camera_info", 1, &BrickSearch::cameraInfoCallback, this);
+
+  // Subscribe to the camera for D image
   depth_image_sub_ = it_.subscribe("/camera/depth/image_raw", 1, &BrickSearch::depthImageCallback, this);
 
   // Advertise "cmd_vel" publisher to control TurtleBot manually
@@ -208,10 +229,100 @@ void BrickSearch::amclPoseCallback(const geometry_msgs::PoseWithCovarianceStampe
   }
 }
 
+void BrickSearch::depthImageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
+{
+  // Use this method to identify when the brick is visible
+  // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
+  if (depthImageBuffer.image_msg_count_ < 15)
+  {
+    depthImageBuffer.image_msg_count_++;
+    return;
+  }
+  else
+  {
+    depthImageBuffer.image_msg_count_= 0;
+  }
+
+  // Copy the image message to a cv_bridge image pointer
+  cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
+
+  // Save the depth image
+  depthImageBuffer.buffer_mutex_.lock();
+  depthImageBuffer.imageDeq_.push_back(image_ptr->image);
+  if(depthImageBuffer.imageDeq_.size()>2)
+  {
+    depth_image_ = depthImageBuffer.imageDeq_.front();
+    depthImageBuffer.imageDeq_.pop_front();
+    depthImageBuffer.ready_ = true;
+  }
+  depthImageBuffer.buffer_mutex_.unlock();
+
+  // Inform current state
+  //ROS_INFO("depthImageCallback");
+}
+
+void BrickSearch::cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& info_msg_ptr)
+{
+    // Save the camera info
+    cameraBuffer.buffer_mutex_.lock();
+    cameraBuffer.cameraInfoDeq_.push_back(info_msg_ptr);
+    if(cameraBuffer.cameraInfoDeq_.size()>2)
+    {
+      camera_info_ = cameraBuffer.cameraInfoDeq_.front();
+      cameraBuffer.cameraInfoDeq_.pop_front();
+    }
+    cameraBuffer.buffer_mutex_.unlock();
+
+    // Inform current state
+    //ROS_INFO("cameraInfoCallback");
+}
+
+void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
+{
+  // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
+  if (imageBuffer.image_msg_count_ < 15)
+  {
+    imageBuffer.image_msg_count_++;
+    return;
+  }
+  else
+  {
+    imageBuffer.image_msg_count_ = 0;
+  }
+
+  // Copy the image message to a cv_bridge image pointer
+  cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
+
+  // Analyse image to find the brick
+  imageBuffer.buffer_mutex_.lock();
+  imageBuffer.imageDeq_.push_back(image_ptr->image);
+  if(imageBuffer.imageDeq_.size()>2)
+  {
+    image_ = imageBuffer.imageDeq_.front();
+    imageBuffer.imageDeq_.pop_front();
+
+    // Check if brick is founded
+    BrickSearch::brickIGotYouInMySight();
+
+    // If brick is found then find its location
+    depthImageBuffer.buffer_mutex_.lock();
+    if (brick_found_ == true && depthImageBuffer.ready_ == true) BrickSearch::brickWhereAreYou();
+    depthImageBuffer.buffer_mutex_.unlock();
+
+    // Clear keypoints for next search
+    keypoints_.clear();
+  }
+  imageBuffer.buffer_mutex_.unlock();
+
+  // Inform current state
+  //ROS_INFO("imageCallback");
+  ROS_INFO_STREAM("brick_found_: " << brick_found_);
+}
+
 void BrickSearch::brickIGotYouInMySight(void)
 {
   // Variables
-  cv::Mat hsv,mask1,mask2;
+  cv::Mat hsv,mask1,mask2,mask3;
 
   // Convert that frame to seen color
   cv::cvtColor(image_,image_,cv::COLOR_BGR2RGB);
@@ -225,6 +336,7 @@ void BrickSearch::brickIGotYouInMySight(void)
     
   // Generate the final mask
   mask1 = mask1 + mask2;
+  mask3 = mask1;
   cv::bitwise_not(mask1,mask1);
   cv::copyMakeBorder(mask1,mask1,1,1,1,1,cv::BORDER_CONSTANT,255);
 
@@ -259,16 +371,20 @@ void BrickSearch::brickIGotYouInMySight(void)
     
   // Detect Blobs
   detector->detect(mask1,keypoints_);
-  ROS_INFO_STREAM("Size of keypoints: " << keypoints_.size());
+  //ROS_INFO_STREAM("Size of keypoints: " << keypoints_.size());
     
   // If keypoints is filled then brick is found
   if (keypoints_.empty() == true) brick_found_ = false;
   else brick_found_ = true;
 
   // Published the blob image on rqt_image_view
-  cv::drawKeypoints(mask1,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+  cv::drawKeypoints(image_,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
   sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
   test_image_pub_.publish(msg);
+
+  // Inform current state
+  //ROS_INFO("brickIGotYouInMySight");
 }
 
 void BrickSearch::brickWhereAreYou(void)
@@ -288,89 +404,57 @@ void BrickSearch::brickWhereAreYou(void)
 
   // Define Blob centre in pixel
   cv::Point2f blob_centre = keypoints_.at(id_max).pt;
+  float x = blob_centre.x;
+  float y = blob_centre.y;
+  ROS_INFO_STREAM("Blob centre X: "<< x);
+  ROS_INFO_STREAM("Blob centre Y: "<< y);
+  //ROS_INFO("HERE");
 
-  // *FIND_THE_POSITION_OF_BRICK_IN_3D*
+  // *FIND_THE_POSITION_OF_BRICK_IN_3D
+  // The ratio from RGB to D
+  float rgb_d_rows_ratio = (float)image_.rows / (float)depth_image_.rows;
+  float rgb_d_cols_ratio = (float)image_.cols / (float)depth_image_.cols;
+  //ROS_INFO("HERE");
+  // get camera intrinsics
+  cameraBuffer.buffer_mutex_.lock();
+  float fx = camera_info_->K[0];
+  float fy = camera_info_->K[4];
+  float px = camera_info_->K[2];
+  float py = camera_info_->K[5];
+  //ROS_INFO_STREAM("fx: "<<fx);
+  //ROS_INFO_STREAM("fy: "<<fy);
+  //ROS_INFO_STREAM("px: "<<px);
+  //ROS_INFO_STREAM("py: "<<px);
+  cameraBuffer.buffer_mutex_.unlock();
+  //ROS_INFO("HERE");
 
-  depthImageBuffer.buffer_mutex_.lock();
-  if(imageBuffer.imageDeq_.size()>2)
+  // Find depth of the blob centre RGB pixel
+  float depth = depth_image_.at<uchar>(cv::Point((int)(x / rgb_d_rows_ratio),(int)(y / rgb_d_cols_ratio))) * (3000 / 255) + 500;
+  //ROS_INFO_STREAM("Rows ratio: "<<(int)(x / rgb_d_rows_ratio));
+  //ROS_INFO_STREAM("Cols ratio: "<<(int)(y / rgb_d_cols_ratio));
+  //ROS_INFO_STREAM("Depth: "<<depth);
+
+  //ROS_INFO("HERE");
+
+  if (depth>0)
   {
-    depth_image_ = depthImageBuffer.imageDeq_.front();
-    depthImageBuffer.imageDeq_.pop_front();
+    brick_location_.x = (x - px) * depth / fx;
+    brick_location_.y = (y - py) * depth / fy;
+    brick_location_.z = depth;
   }
-  depthImageBuffer.buffer_mutex_.unlock();
-}
-
-void BrickSearch::depthImageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
-{
-  // Use this method to identify when the brick is visible
-  // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
-  if (depthImageBuffer.image_msg_count_ < 25)
-  {
-    depthImageBuffer.image_msg_count_++;
-    return;
-  }
-  else
-  {
-    depthImageBuffer.image_msg_count_= 0;
-  }
-
-  // Copy the image message to a cv_bridge image pointer
-  cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
-  
-  // Save the depth image
-  depthImageBuffer.buffer_mutex_.lock();
-  depthImageBuffer.imageDeq_.push_back(image_ptr->image);
-  if(imageBuffer.imageDeq_.size()>2)
-  {
-    depth_image_ = depthImageBuffer.imageDeq_.front();
-    depthImageBuffer.imageDeq_.pop_front();
-  }
-  depthImageBuffer.buffer_mutex_.unlock();
-}
-
-void BrickSearch::imageCallback(const sensor_msgs::ImageConstPtr& image_msg_ptr)
-{
-  // Use this method to identify when the brick is visible
-  // The camera publishes at 30 fps, it's probably a good idea to analyse images at a lower rate than that
-  if (imageBuffer.image_msg_count_ < 25)
-  {
-    imageBuffer.image_msg_count_++;
-    return;
-  }
-  else
-  {
-    imageBuffer.image_msg_count_ = 0;
-  }
-
-  // Copy the image message to a cv_bridge image pointer
-  cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg_ptr);
-
-  // Analyse image to find the brick
-  imageBuffer.buffer_mutex_.lock();
-  imageBuffer.imageDeq_.push_back(image_ptr->image);
-  if(imageBuffer.imageDeq_.size()>2)
-  {
-    image_ = imageBuffer.imageDeq_.front();
-    imageBuffer.imageDeq_.pop_front();
-
-    // Check if brick is founded
-    BrickSearch::brickIGotYouInMySight();
-
-    // Clear keypoints for next search
-    keypoints_.clear();
-  }
-  imageBuffer.buffer_mutex_.unlock();
 
   // Inform current state
-  ROS_INFO("imageCallback");
-  ROS_INFO_STREAM("brick_found_: " << brick_found_);
+  ROS_INFO_STREAM(" | X: "<<brick_location_.x<<
+                  " | Y: "<<brick_location_.y<<
+                  " | Z: "<<brick_location_.z);
+  //ROS_INFO("brickWhereAreYou");
 }
 
 void BrickSearch::mainLoop()
 {
   while (ros::ok())
   {
-    ROS_INFO("mainLoop");
+    //ROS_INFO("mainLoop");
     // Delay so the loop doesn't run too fast
     ros::Duration(0.2).sleep();
   }

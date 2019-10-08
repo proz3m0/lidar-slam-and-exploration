@@ -3,7 +3,7 @@
     <name>brick_search</name>
     <version>0.0.1</version>
     <description>ROS node search for a brick in a known map</description>
-    <maintainer email="brenton.leighton@uts.edu.au">Brenton Leighton</maintainer>
+    <maintainer email="12542344@student.uts.edu.au">12542344</maintainer>
     <license>BSD-3-Clause</license>
 
     <buildtool_depend>catkin</buildtool_depend>
