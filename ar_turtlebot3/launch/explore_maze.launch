@@ -9,7 +9,8 @@
 	<arg name="camera_link_frame" 		default="camera_link"/>
 	<arg name="map_topic" 				default="/map"/>
 	<arg name="brick_found_topic" 		default="/brick_found"/>
-	<arg name="req_path_topic" 			default="/request_path"/>
+	<arg name="free_space_topic" 		default="/free_space"/>
+	<arg name="req_path_topic" 			default="/plan_path"/>
 	<arg name="start_explore_topic" 	default="/start_explore"/>
 	<arg name="model" 					default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
 
@@ -24,7 +25,14 @@
 	</include>
 
 	<!-- MAZE EXPLORER -->
-	<node name="MazeExplorer"           pkg="maze_explorer" type="maze_explorer"  output="screen">
+	<node pkg="maze_planner" type="maze_planner" name="MazePlanner" output="screen" >
+		<param name="inflation_radius" 			type="double" 	value="0.3"/>
+		<param name="plan_path_main_loop_rate" 	type="double" 	value="200.0"/>
+		<param name="robot_inflation" 			type="double" 	value="0.35"/>
+	</node>
+
+	<!-- BRICK SEARCH -->
+	<node pkg="brick_search" type="brick_search" name="BrickSearch" output="screen" >
 	</node>
 
 	<!-- CAMERA OGMAP -->
@@ -33,11 +41,12 @@
 		<param name="camera_link_frame"     type="string"       value="$(arg camera_link_frame)"/>
 		<param name="map_topic"             type="string"       value="$(arg map_topic)"/>
 		<param name="cam_ogmap_topic"       type="string"       value="camera_ogmap"/>
+		<param name="free_space_topic"       type="string"       value="$(arg free_space_topic)"/>
 		<param name="cam_h_fov"       		type="double"       value="1.57079632679"/>
 		<param name="ang_res"       		type="double"       value="0.00174532925"/>
 		<param name="cam_range"       		type="double"       value="1.5"/>
 		<param name="ray_int"       		type="double"       value="0.01"/>
-		<param name="cam_rate"       		type="double"       value="5.0"/>
+		<param name="cam_rate"       		type="double"       value="3.0"/>
 	</node>
 
 	<!-- EXPLORE MOVE -->
@@ -48,10 +57,11 @@
 		<param name="req_path_topic"        type="string"       value="$(arg req_path_topic)"/>
 		<param name="brick_found_topic"     type="string"       value="$(arg brick_found_topic)"/>
 		<param name="start_explore_topic"   type="string"       value="$(arg start_explore_topic)"/>
-		<param name="path_rate"             type="double"       value="2.0"/>
-		<param name="comp_x"                type="double"       value="0.2"/>
-		<param name="comp_y"                type="double"       value="0.2"/>
-		<param name="comp_yaw"              type="double"       value="0.523599"/>
+		<param name="free_space_topic"       type="string"       value="$(arg free_space_topic)"/>
+		<param name="path_rate"             type="double"       value="10.0"/>
+		<param name="comp_x"                type="double"       value="0.3"/>
+		<param name="comp_y"                type="double"       value="0.3"/>
+		<param name="comp_yaw"              type="double"       value="1.5"/>
 	</node>
 
 </launch>

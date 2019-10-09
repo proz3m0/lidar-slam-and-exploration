@@ -16,6 +16,7 @@
 
 #include "camera_ogmap/map_transformer.h"
 #include "camera_ogmap/camera_ray_tracer.h"
+#include "camera_ogmap/FreeSpace.h"
 
 const int FREE_CELL = 0;
 const int OCCUPIED_CELL = 100;
@@ -33,6 +34,10 @@ private:
     ros::Publisher cam_ogmap_pub_;
     /** \brief ros subscriber to check whether brick has been found*/
     ros::Subscriber map_sub_;
+    /** \brief ros service for exploration start */
+    ros::Subscriber start_sub_;
+    /** \brief ros service that checks if a pose is in free space*/
+    ros::ServiceServer pose_check_serv_;
     /** \brief tf2 buffer for transforms */
     tf2_ros::Buffer tf2_buffer_;
     /** \brief tf2 listener for transforms */
@@ -57,6 +62,8 @@ private:
     *********************************************************************/
     /** \brief initialized */
     bool init_;
+    /** \brief initialized */
+    bool start_;
     /*********************************************************************
         * PRIVATE FUNCTIONS
     *********************************************************************/
@@ -126,9 +133,7 @@ private:
                 // gets index
                 int index;
                 map_transformer_.gridCellToIndex(grid_cell, index);
-                //ROS_INFO("INDEX: %d\t GRID CELL: x:%d\ty:%d", index, grid_cell.x, grid_cell.y);
                 if(og_map_.data[index] == OCCUPIED_CELL) break;
-                //ROS_INFO("WRITING CELL: x:%d\ty:%d", grid_cell.x, grid_cell.y);
                 og_map_.data[index] = FREE_CELL;
             }
         }
@@ -150,13 +155,18 @@ public:
         pn.param<std::string>("map_frame", map_frame_, "map");
 
         // Sets up subscribers, publishers and services
-        std::string map_topic, cam_ogmap_topic;
+        std::string map_topic, cam_ogmap_topic, free_space_topic, start_explore_topic;
         pn.param<std::string>("map_topic", map_topic, "/map");
         pn.param<std::string>("cam_ogmap_topic", cam_ogmap_topic, "/camera_og_map");
+        pn.param<std::string>("free_space_topic", free_space_topic, "/free_space");
+        pn.param<std::string>("start_explore_topic", start_explore_topic, "/start_explore");
         // Advertises publishers
         cam_ogmap_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>(cam_ogmap_topic, 10);
+        // Advertises service
+        pose_check_serv_ = nh_.advertiseService(free_space_topic, &CameraOGMapNode::freeSpaceCallback, this);
         // Sets up subscribers
         map_sub_ = nh_.subscribe<nav_msgs::OccupancyGrid>(map_topic, 10, &CameraOGMapNode::mapCallback, this);
+        start_sub_ = nh_.subscribe<std_msgs::Bool>(start_explore_topic, 10, &CameraOGMapNode::startCallback, this);
 
         // Sets up CameraRayTracer
         double cam_h_fov, ang_res, cam_range, ray_int;
@@ -177,6 +187,32 @@ public:
     void mapCallback(const nav_msgs::OccupancyGridConstPtr &map_msg) {
         if(!init_) initOGMap(map_msg);
     }
+    /** \brief callback function for brick found */
+    void startCallback(const std_msgs::BoolConstPtr &start_msg) {
+        if(start_msg->data) start_ = true;
+    }
+    /** \brief callback function for brick found */
+    bool freeSpaceCallback(camera_ogmap::FreeSpace::Request& req, camera_ogmap::FreeSpace::Response& res) {
+
+        tf2::Quaternion q;
+        tf2::fromMsg(req.pose.pose.orientation, q);
+        tf2::Matrix3x3 rot(q);
+        double r,p,y;
+        rot.getEulerYPR(y,p,r);
+        geometry_msgs::Pose2D p_2d;
+        p_2d.x = req.pose.pose.position.x;
+        p_2d.y = req.pose.pose.position.y;
+
+        GridCell g{};
+        if(map_transformer_.mapPointToGridCell(p_2d, g)) {
+            int index;
+            map_transformer_.gridCellToIndex(g, index);
+            res.free_space = og_map_.data[index] == FREE_CELL;
+        }
+        else res.free_space = false;
+        return true;
+
+    }
     /*********************************************************************
         * THREADS
     *********************************************************************/
@@ -187,7 +223,7 @@ public:
         ros::Duration(0.5).sleep();
 
         // Busy waiting for initialisation
-        while(!init_);
+        while(!init_ || !start_);
 
         ros::Rate rate_limiter(cam_rate_);
         while(ros::ok()) {
