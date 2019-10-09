@@ -9,14 +9,15 @@ int main(int argc, char **argv)
     ros::NodeHandle nh;
     
     MazeExplorer mp(nh);
-    /*
+    
     // steps for executing the algorithm
     mp.dilateOccupiedSpace(10);
     mp.findIntersection();
+    mp.findDeadend();
     mp.showMap();
     mp.arrangeQueue();
     mp.showQueuedPoint();
-    */
+    
     ros::spin();
 
     return 0;
