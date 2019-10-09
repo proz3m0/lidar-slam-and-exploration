@@ -1,0 +1,22 @@
+<package format="2">
+
+    <name>maze_planner</name>
+    <version>0.0.1</version>
+    <description>ROS node for A* path planning</description>
+    <maintainer email="brenton.leighton@uts.edu.au">Brenton Leighton</maintainer>
+    <license>BSD-3-Clause</license>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <build_depend>message_generation</build_depend>
+
+    <depend>roscpp</depend>
+    <depend>geometry_msgs</depend>
+    <depend>nav_msgs</depend>
+    <depend>visualization_msgs</depend>
+
+    <exec_depend>message_runtime</exec_depend>
+    <exec_depend>map_server</exec_depend>
+    <exec_depend>rviz</exec_depend>
+
+</package>

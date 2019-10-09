@@ -1,9 +1,67 @@
 <launch>
 
-	<!-- AMCL localisation -->	
-	<include file="$(find turtlebot3_navigation)/launch/turtlebot3_navigation_run.launch"/>
+	<!-- *********************************** -->
+	<!--         GLOBAL CONFIG             -->
+	<!-- *********************************** -->
+	<arg name="map_file" 				default="$(find ar_turtlebot3)/maps/map_real.yaml"/>
+	<arg name="map_frame" 				default="map"/>
+	<arg name="robot_frame" 			default="base_footprint"/>
+	<arg name="camera_link_frame" 		default="camera_link"/>
+	<arg name="map_topic" 				default="/map"/>
+	<arg name="brick_found_topic" 		default="/brick_found"/>
+	<arg name="free_space_topic" 		default="/free_space"/>
+	<arg name="req_path_topic" 			default="/plan_path"/>
+	<arg name="start_explore_topic" 	default="/start_explore"/>
+	<arg name="model" 					default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
 
-	<!-- Maze Explorer -->
-	<node pkg="maze_explorer" type="maze_explorer" name="maze_explorer"/>
+	<!-- *********************************** -->
+	<!--        NODES              -->
+	<!-- *********************************** -->
+
+	<!-- TURTLEBOT NAVIGATION -->
+	<include file="$(find ar_turtlebot3)/launch/ar_turtlebot3_navigation.launch">
+		<arg name="map_file" value="$(arg map_file)"/>
+		<arg name="model" value="$(arg model)"/>
+	</include>
+
+	<!-- MAZE EXPLORER -->
+	<node pkg="maze_planner" type="maze_planner" name="MazePlanner" output="screen" >
+		<param name="inflation_radius" 			type="double" 	value="0.3"/>
+		<param name="plan_path_main_loop_rate" 	type="double" 	value="200.0"/>
+		<param name="robot_inflation" 			type="double" 	value="0.35"/>
+	</node>
+
+	<!-- BRICK SEARCH -->
+	<node pkg="brick_search" type="brick_search" name="BrickSearch" output="screen" >
+	</node>
+
+	<!-- CAMERA OGMAP -->
+	<node name="CameraOGMap"           pkg="camera_ogmap" type="camera_ogmap_node" >
+		<param name="map_frame"             type="string"       value="$(arg map_frame)"/>
+		<param name="camera_link_frame"     type="string"       value="$(arg camera_link_frame)"/>
+		<param name="map_topic"             type="string"       value="$(arg map_topic)"/>
+		<param name="cam_ogmap_topic"       type="string"       value="camera_ogmap"/>
+		<param name="free_space_topic"       type="string"       value="$(arg free_space_topic)"/>
+		<param name="cam_h_fov"       		type="double"       value="1.57079632679"/>
+		<param name="ang_res"       		type="double"       value="0.00174532925"/>
+		<param name="cam_range"       		type="double"       value="1.5"/>
+		<param name="ray_int"       		type="double"       value="0.01"/>
+		<param name="cam_rate"       		type="double"       value="3.0"/>
+	</node>
+
+	<!-- EXPLORE MOVE -->
+	<node name="ExploreMove"           pkg="explore_move" type="explore_move_node"  output="screen">
+		<param name="map_frame"             type="string"       value="$(arg map_frame)"/>
+		<param name="robot_frame"           type="string"       value="$(arg robot_frame)"/>
+		<param name="move_base_pose_topic"  type="string"       value="/move_base_simple/goal"/>
+		<param name="req_path_topic"        type="string"       value="$(arg req_path_topic)"/>
+		<param name="brick_found_topic"     type="string"       value="$(arg brick_found_topic)"/>
+		<param name="start_explore_topic"   type="string"       value="$(arg start_explore_topic)"/>
+		<param name="free_space_topic"       type="string"       value="$(arg free_space_topic)"/>
+		<param name="path_rate"             type="double"       value="10.0"/>
+		<param name="comp_x"                type="double"       value="0.3"/>
+		<param name="comp_y"                type="double"       value="0.3"/>
+		<param name="comp_yaw"              type="double"       value="1.5"/>
+	</node>
 
 </launch>

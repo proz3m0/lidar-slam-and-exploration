@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+
+<launch>
+
+    <!-- Map server -->
+    <node pkg="map_server" type="map_server" name="map_server" required="true"
+          args="$(find maze_explorer)/config/map.yaml"/>
+
+    <!-- RViz -->
+    <node pkg="rviz" type="rviz" name="rviz" required="true"
+          args="-d $(find maze_explorer)/config/visualisation.rviz"/>
+
+    <!-- Particle filter localisation -->
+    <node pkg="maze_planner" type="maze_planner" name="MazePlanner" output="screen">
+        <param name="inflation_radius" type="double" value="0.4"/>
+        <param name="plan_path_main_loop_rate" type="double" value="5.0"/>
+        <param name="robot_inflation" type="double" value="0.5"/>
+        <!-- Target rate of the main loop in planPath() -->
+        <!-- Reduce this to slow down the visualisation of the open and closed sets -->
+        <!-- <param name="plan_path_main_loop_rate" type="double" value="500"/> -->
+    </node>
+
+</launch>

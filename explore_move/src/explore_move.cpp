@@ -12,8 +12,12 @@
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <std_msgs/Bool.h>
+#include <std_srvs/Trigger.h>
+#include <angles/angles.h>
+#include <actionlib_msgs/GoalID.h>
 
-#include "maze_explorer/RequestMazePath.h"
+#include "maze_planner/PlanPath.h"
+#include "camera_ogmap/FreeSpace.h"
 
 /** \brief class for exploration*/
 class ExploreMove {
@@ -25,8 +29,14 @@ private:
     ros::NodeHandle nh_;
     /** \brief ros publisher to publish move_base poses */
     ros::Publisher pose_pub_;
+    /** \brief ros publisher to publish cancel pose msg */
+    ros::Publisher cancel_pose_pub_;
     /** \brief ros service client to get exploration path */
     ros::ServiceClient req_path_client_;
+    /** \brief ros service client to get exploration path */
+    ros::ServiceClient free_space_client_;
+    /** \brief ros service for exploration start */
+    ros::Subscriber start_explore_sub_;
     /** \brief ros subscriber to check whether brick has been found*/
     ros::Subscriber brick_found_sub_;
     /** \brief tf2 buffer for transforms */
@@ -59,6 +69,8 @@ private:
     *********************************************************************/
     /** \brief sets true when brick has been found */
     bool brick_found_;
+    /** \brief bool to start exploration*/
+    bool start_;
     /*********************************************************************
         * PRIVATE FUNCTIONS
     *********************************************************************/
@@ -85,7 +97,8 @@ private:
       * \param path_pose
       * \param robot_pose*/
     void setPathTF() {
-        for(auto pose:path_) {
+        for(auto&& pose:path_) {
+            pose.header.frame_id = map_frame_;
             tf2::Transform tf;
             tf2::fromMsg(pose.pose, tf);
             path_tf_.push_back(tf);
@@ -105,7 +118,7 @@ private:
         // Compares poses and returns true if x y and yaw are within limits
         return  fabs(path_pose.getOrigin().getX() - robot_pose.getOrigin().getX()) < comp_x_ &&
                 fabs(path_pose.getOrigin().getY() - robot_pose.getOrigin().getY()) < comp_y_ &&
-                fabs(path_y - robot_y) < comp_yaw_;
+                fabs(angles::normalize_angle(path_y - robot_y)) < comp_yaw_;
     }
 public:
     /*********************************************************************
@@ -114,7 +127,7 @@ public:
     /** \brief CameraOGMap constructor
       * \param nh nodehandle */
     ExploreMove(ros::NodeHandle nh)
-            : nh_(nh), tf2_listener_(tf2_buffer_), brick_found_(false), path_count_(0) {
+            : nh_(nh), tf2_listener_(tf2_buffer_), brick_found_(false), start_(false), path_count_(0) {
         // Nodehande for input
         ros::NodeHandle pn("~");
 
@@ -123,16 +136,22 @@ public:
         pn.param<std::string>("map_frame", map_frame_, "map");
 
         // Sets up subscribers, publishers and services
-        std::string pose_topic, req_path_topic, brick_found_topic;
+        std::string pose_topic, req_path_topic, brick_found_topic, start_explore_topic, free_space_topic, cancel_pose_topic;
         pn.param<std::string>("move_base_pose_topic", pose_topic, "/move_base_simple/goal");
         pn.param<std::string>("req_path_topic", req_path_topic, "/request_path");
         pn.param<std::string>("brick_found_topic", brick_found_topic, "/brick_found");
+        pn.param<std::string>("start_explore_topic", start_explore_topic, "/start_explore");
+        pn.param<std::string>("free_space_topic", free_space_topic, "/free_space");
+        pn.param<std::string>("cancel_pose_topic", cancel_pose_topic, "/move_base/cancel");
         // Advertises publishers
         pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>(pose_topic, 10);
+        cancel_pose_pub_ = nh_.advertise<actionlib_msgs::GoalID>(cancel_pose_topic, 10);
         // Sets up services
-        req_path_client_ = nh_.serviceClient<maze_explorer::RequestMazePath>(req_path_topic);
+        req_path_client_ = nh_.serviceClient<maze_planner::PlanPath>(req_path_topic);
+        free_space_client_ = nh_.serviceClient<camera_ogmap::FreeSpace>(free_space_topic);
         // Sets up subscribers
         brick_found_sub_ = nh_.subscribe<std_msgs::Bool>(brick_found_topic, 10, &ExploreMove::brickFoundCallback, this);
+        start_explore_sub_ = nh_.subscribe<std_msgs::Bool>(start_explore_topic, 10, &ExploreMove::startExploreCallback, this);
 
         // Sets up path rate
         pn.param<double>("path_rate", path_rate_, 2.0);
@@ -148,11 +167,18 @@ public:
     void brickFoundCallback(const std_msgs::BoolConstPtr &brick_found_msg) {
         brick_found_ = brick_found_msg->data;
     }
+    /** \brief callback function for brick found */
+    void startExploreCallback(const std_msgs::BoolConstPtr &start_msg) {
+        if(start_msg->data) start_ = true;
+    }
     /*********************************************************************
         * THREADS
     *********************************************************************/
     /** \brief thread that saves the map to base_frame tf */
     void pathFollowThread(){
+
+        // busy wait before starting
+        while(!start_)ros::Duration(0.5).sleep();
 
         // Delay to allow for initialisation
         ros::Duration(0.5).sleep();
@@ -169,13 +195,14 @@ public:
         } while(!transform_success);
 
         // Sets up path service
-        maze_explorer::RequestMazePath req_path_serv;
+        maze_planner::PlanPath req_path_serv;
         req_path_serv.request.robot_pose.header.frame_id = map_frame_;
         tf2::toMsg(tf, req_path_serv.request.robot_pose.pose);
+        ROS_INFO("Explore Move: pathFollowThread: Start Pose [x:%f\ty:%f", tf.getOrigin().getX(), tf.getOrigin().getY());
 
         // Calls service
         if (req_path_client_.call(req_path_serv)) {
-            ROS_INFO("Explore Move: pathFollowThread: Service Called and Path Recieved");
+            ROS_INFO("Explore Move: pathFollowThread: Service Called and Path Recieved, size: %d", req_path_serv.response.path.size());
             path_ = req_path_serv.response.path;
             setPathTF();
         }
@@ -195,12 +222,29 @@ public:
             } else {
                 if(poseCompare(path_tf_[path_count_], tf)) {
                     path_count_ ++;
-                    if(path_count_ < path_.size())pose_pub_.publish(path_[path_count_]);
+                    if(path_count_ < path_.size()){
+                        ROS_INFO("Explore Move: new goal pose, count: %d", path_count_);
+                        pose_pub_.publish(path_[path_count_]);
+                    }
                     else break;
                 }
+                else {
+                    camera_ogmap::FreeSpace free_space_serv;
+                    free_space_serv.request.pose = path_[path_count_];
+                    if (free_space_client_.call(free_space_serv)) {
+                        if (free_space_serv.response.free_space) {
+                            path_count_++;
+                            if (path_count_ < path_.size())pose_pub_.publish(path_[path_count_]);
+                            else break;
+                        }
+                    }
+                }
             }
+
             rate_limiter.sleep();
         }
+        // cancels goal
+        cancel_pose_pub_.publish(actionlib_msgs::GoalID{});
         ROS_INFO("Explore Move: pathFollowThread: Brick Found or Exploration Complete");
     }
 };
