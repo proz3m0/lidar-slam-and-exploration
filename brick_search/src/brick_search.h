@@ -58,7 +58,7 @@ public:
 
     void cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& info_msg_ptr);
 
-    void findRedBlob(const cv_bridge::CvImagePtr& cv_ptr);
+    void findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth);
     
     bool fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame);
 

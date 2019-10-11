@@ -56,20 +56,20 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
     }
 
     findRedBlob(cv_color_ptr);
-    std::cout << "got image" << std::endl;
+    ROS_INFO_STREAM("brick_found_: " << brick_found_);
 
 };
 
-void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr)
+void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth)
 {
   // Variables
   cv::Mat image,mask1,mask2,mask3;
 
   // Convert that frame to seen color
-  cv::cvtColor(cv_ptr->image,image,cv::COLOR_BGR2RGB);
+  cv::cvtColor(cv_ptr_rgb->image,image,cv::COLOR_BGR2RGB);
 
   // Convert to hsv
-  cvtColor(cv_ptr->image, imageHsv_, cv::COLOR_BGR2HSV);
+  cvtColor(cv_ptr_rgb->image, imageHsv_, cv::COLOR_BGR2HSV);
     
   // Creating masks to detect the upper and lower red color.
   cv::inRange(imageHsv_,cv:: Scalar(0, 120, 70),cv::Scalar(10, 255, 255), mask1);
@@ -123,6 +123,7 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr)
       brick_found_pub_.publish(brick_found);
 
       //calculate waypoint here
+      findXYZ(keypoints_[0], cv_ptr_depth);
   }
 
   // Published the blob image on rqt_image_view
@@ -184,6 +185,8 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint, const cv_
     brick_pose.pose.orientation.y = finalrot.getY();
     brick_pose.pose.orientation.z = finalrot.getZ();
     brick_pose.pose.orientation.w = finalrot.getW();    
+
+    std::cout << brick_pose << std::endl;
 };
 
 bool BrickSearch::fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame) 
