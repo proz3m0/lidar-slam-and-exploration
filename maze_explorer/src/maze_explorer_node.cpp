@@ -55,7 +55,6 @@ bool MazeExplorer::exploreMazeAlgorithm(maze_explorer::RequestMazePath::Request 
     ROS_INFO("Running exploration algorithm");
     dilateOccupiedSpace(10);
     findIntersection();
-    findDeadend();
     //showMap();
     arrangeQueue();
     //showQueuedPoint();
@@ -98,32 +97,6 @@ void MazeExplorer::findIntersection()
                     map_.at<cv::Vec3b>(row,col) = green;
                     addIntersectionSquare(18,current_point);
                     intersectionpoint_.push_back(current_point);
-                }
-
-            }
-        }
-    }
-};
-
-void MazeExplorer::findDeadend()
-{
-    for(int row = 0; row < map_.rows; row++)
-    {
-        for(int col = 0; col < map_.cols; col++)
-        {
-            matPoint current_point;
-            current_point.row = row;
-            current_point.col = col;
-            if(map_.at<cv::Vec3b>(row,col) == white && checkDeadendSqaure(current_point) == false)
-            {
-                //sequence is up down left right
-                std::vector<bool> result;
-
-                result = vhTrace(18, row, col);
-                if(isDeadend(result) == true){
-                    map_.at<cv::Vec3b>(row,col) = red;
-                    addDeadendSquare(18, current_point);
-                    deadendpoint_.push_back(current_point);
                 }
 
             }
@@ -178,13 +151,6 @@ bool MazeExplorer::isIntersection(std::vector<bool> input)
     else return false;
 };
 
-bool MazeExplorer::isDeadend(std::vector<bool> input)
-{
-    int count = 0;
-    for(auto check : input) { if(check == true) count += 1; }
-    return (count == 1);
-};
-
 void MazeExplorer::addIntersectionSquare(int size, matPoint intersectionPoint)
 {
     // a,b,c (ab = top left corner), c = width and height (square)
@@ -197,20 +163,6 @@ void MazeExplorer::addIntersectionSquare(int size, matPoint intersectionPoint)
     intersection.size = size*2;
 
     blockedintersection_.push_back(intersection);
-};
-
-void MazeExplorer::addDeadendSquare(int size, matPoint deadendPoint)
-{
-    // a,b,c (ab = top left corner), c = width and height (square)
-    int topleft_row = deadendPoint.row-size;
-    int topleft_col = deadendPoint.col-size;
-
-    IntersectionData intersection;
-    intersection.topleftrow = topleft_row;
-    intersection.topleftcol = topleft_col;
-    intersection.size = size*2;
-
-    blockeddeadend_.push_back(intersection);
 };
 
 bool MazeExplorer::checkIntersectionSqaure(matPoint point)
@@ -234,74 +186,60 @@ bool MazeExplorer::checkIntersectionSqaure(matPoint point)
     return check;
 };  
 
-bool MazeExplorer::checkDeadendSqaure(matPoint point)
-{
-    bool check = false;
-    if( blockedintersection_.size() != 0)
-    {
-        for(auto id : blockeddeadend_)
-        {
-            // check row
-            if(point.row >= id.topleftrow && point.row <= id.topleftrow+id.size){
-                // check col
-                if(point.col >= id.topleftcol && point.col <= id.topleftcol+id.size){
-                    check = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    return check;
-};
-
 void MazeExplorer::arrangeQueue()
 {
+    matPoint nextpoint;
+    std::vector<matPoint> intersectionpointcopy = intersectionpoint_;
 
-    std::vector<matPoint> explored;
     std::deque<matPoint> queue;
     queue.push_back(robotStartingPose_);
-    matPoint current_point;
-    std::vector<matPoint> neighbour, actual_neighbour;
 
-    //graph search // to check if something exist std::find(v.begin(), v.end(), elem)
-    while(!queue.empty())
+    //graph search 
+    while(intersectionpointcopy.size() != 0)
     {
-        current_point = queue.front();
-        queue.pop_front();
+        std::vector<matPoint> explored;
+        matPoint current_point;
+        std::vector<matPoint> neighbour, actual_neighbour;
+        while(!queue.empty())
+        {
+            current_point = queue.front();
+            queue.pop_front();
 
-        //check if current point exist in intersectionpoint_    
-        std::vector<matPoint>::iterator flag = std::find(intersectionpoint_.begin(), intersectionpoint_.end(), current_point);
-        if (flag != intersectionpoint_.end ()){
-            queuedIntersectionpoint_.push_back(current_point);
-        }
-        /*
-        if( std::find(intersectionpoint_.begin(), intersectionpoint_.end(), current_point) != intersectionpoint_.end() ){
-            queuedIntersectionpoint_.push_back(current_point);
-        }
-        */
-
-        //put into explored
-        explored.push_back(current_point);
-
-        //get neighbour
-        neighbour = getNeighbour(current_point);
-
-        //get unexplored neighbour
-        for(auto cell : neighbour){
-            if( std::find(explored.begin(), explored.end(), cell) == explored.end()){
-                actual_neighbour.push_back(cell);
+            //check if current point exist in intersectionpoint_    
+            std::vector<matPoint>::iterator flag = std::find(intersectionpointcopy.begin(), intersectionpointcopy.end(), current_point);
+            if (flag != intersectionpointcopy.end ()){
+                queuedIntersectionpoint_.push_back(current_point);
+                nextpoint = current_point;
+                // add remove point from intersectionpointcopy
+                intersectionpointcopy.erase(flag);
             }
+
+            //put into explored
+            explored.push_back(current_point);
+
+            //get neighbour
+            neighbour = getNeighbour(current_point);
+
+            //get unexplored neighbour
+            for(auto cell : neighbour){
+                if( std::find(explored.begin(), explored.end(), cell) == explored.end()){
+                    actual_neighbour.push_back(cell);
+                }
+            }
+
+            //put into queue
+            for(auto cell : actual_neighbour) {
+                queue.push_back(cell);
+                explored.push_back(cell);
+            }
+
+            actual_neighbour.clear();
+            neighbour.clear();
         }
 
-        //put into queue
-        for(auto cell : actual_neighbour) {
-            queue.push_back(cell);
-            explored.push_back(cell);
-        }
+        queue.clear();
+        queue.push_back(nextpoint);
 
-        actual_neighbour.clear();
-        neighbour.clear();
     }
 
     std::cout << queuedIntersectionpoint_.size() << std::endl;
@@ -424,7 +362,8 @@ std::vector<geometry_msgs::PoseStamped> MazeExplorer::getIntersectionPose()
     return queuedIntersectionPose;
 };
 
-void MazeExplorer::inflatePoint(double size)
+void MazeExplorer::getHeading()
 {
-
+    //convert px val to occupancy grid val
+    
 };

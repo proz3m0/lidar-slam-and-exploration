@@ -13,7 +13,6 @@ int main(int argc, char **argv)
     // steps for executing the algorithm
     mp.dilateOccupiedSpace(10);
     mp.findIntersection();
-    mp.findDeadend();
     mp.showMap();
     mp.arrangeQueue();
     mp.showQueuedPoint();

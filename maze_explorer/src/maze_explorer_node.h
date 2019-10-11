@@ -60,8 +60,6 @@ public:
     
     void findIntersection();
 
-    void findDeadend();
-
     void arrangeQueue();
 
     void showQueuedPoint();
@@ -75,6 +73,8 @@ public:
     void inflatePoint(double size);
 
     std::vector<geometry_msgs::PoseStamped> getIntersectionPose(); 
+
+    void getHeading();
 
 protected:
 
@@ -110,16 +110,10 @@ protected:
     std::vector<bool> vhTrace(int traceAmount, int row, int col);
 
     bool isIntersection(std::vector<bool> input);
-    
-    bool isDeadend(std::vector<bool> input);
 
     void addIntersectionSquare(int size, matPoint intersectionPoint);
 
-    void addDeadendSquare(int size, matPoint deadendPoint);
-
     bool checkIntersectionSqaure(matPoint point);
-
-    bool checkDeadendSqaure(matPoint point);
 
     std::vector<matPoint> getNeighbour(matPoint point);
 
@@ -129,11 +123,7 @@ protected:
     
     std::vector<matPoint> intersectionpoint_;
 
-    std::vector<matPoint> deadendpoint_;
-
     std::vector<IntersectionData> blockedintersection_;
-
-    std::vector<IntersectionData> blockeddeadend_;
         
     std::vector<matPoint> queuedIntersectionpoint_;
 
