@@ -406,15 +406,14 @@ void BrickSearch::brickWhereAreYou(void)
   cv::Point2f blob_centre = keypoints_.at(id_max).pt;
   float x = blob_centre.x;
   float y = blob_centre.y;
-  ROS_INFO_STREAM("Blob centre X: "<< x);
-  ROS_INFO_STREAM("Blob centre Y: "<< y);
-  //ROS_INFO("HERE");
+  //ROS_INFO_STREAM("Blob centre X: "<< x);
+  //ROS_INFO_STREAM("Blob centre Y: "<< y);
 
   // *FIND_THE_POSITION_OF_BRICK_IN_3D
   // The ratio from RGB to D
   float rgb_d_rows_ratio = (float)image_.rows / (float)depth_image_.rows;
   float rgb_d_cols_ratio = (float)image_.cols / (float)depth_image_.cols;
-  //ROS_INFO("HERE");
+  
   // get camera intrinsics
   cameraBuffer.buffer_mutex_.lock();
   float fx = camera_info_->K[0];
@@ -426,15 +425,12 @@ void BrickSearch::brickWhereAreYou(void)
   //ROS_INFO_STREAM("px: "<<px);
   //ROS_INFO_STREAM("py: "<<px);
   cameraBuffer.buffer_mutex_.unlock();
-  //ROS_INFO("HERE");
 
   // Find depth of the blob centre RGB pixel
   float depth = depth_image_.at<uchar>(cv::Point((int)(x / rgb_d_rows_ratio),(int)(y / rgb_d_cols_ratio))) * (3000 / 255) + 500;
   //ROS_INFO_STREAM("Rows ratio: "<<(int)(x / rgb_d_rows_ratio));
   //ROS_INFO_STREAM("Cols ratio: "<<(int)(y / rgb_d_cols_ratio));
   //ROS_INFO_STREAM("Depth: "<<depth);
-
-  //ROS_INFO("HERE");
 
   if (depth>0)
   {
