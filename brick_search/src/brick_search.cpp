@@ -55,7 +55,7 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
         return;
     }
 
-    findRedBlob(cv_color_ptr);
+    findRedBlob(cv_color_ptr, cv_depth_ptr);
     ROS_INFO_STREAM("brick_found_: " << brick_found_);
 
 };
