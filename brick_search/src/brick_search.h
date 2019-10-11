@@ -40,10 +40,10 @@ static const uint QUEUE_SIZE = 10;
 [         0.0      ,        0.0      ,   1.0 ] 
 */
 
-static const double FOCAL_LENGTH_X = 1206.8897719532354;
-static const double FOCAL_LENGTH_Y = 1206.8897719532354;
-static const double PRINCIPAL_POINT_X = 960.5;
-static const double PRINCIPAL_POINT_Y = 540.5;
+static const double FOCAL_LENGTH_X = 402.2965906510784;
+static const double FOCAL_LENGTH_Y = 402.2965906510784;
+static const double PRINCIPAL_POINT_X = 320.5;
+static const double PRINCIPAL_POINT_Y = 240.5;
 
 class BrickSearch 
 {
@@ -58,7 +58,7 @@ public:
 
     void cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& info_msg_ptr);
 
-    void findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth);
+    bool findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth);
     
     bool fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame);
 

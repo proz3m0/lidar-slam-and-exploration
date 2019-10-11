@@ -4,11 +4,11 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
 {
     ROS_INFO("Brick search started");
 
-    colorMsg_.subscribe(nh_,"/camera/rgb/image_raw",1);
-    depthMsg_.subscribe(nh_,"/camera/depth/image_raw",1);
-
     nh_private_.param<std::string>("base_frame", camera_frame_, "camera_rgb_optical_frame");
     nh_private_.param<std::string>("map_frame", map_frame_, "map");
+
+    colorMsg_.subscribe(nh_,"/camera/rgb/image_raw",1);
+    depthMsg_.subscribe(nh_,"/camera/depth/image_raw",1);
 
     //Note, change MySyncPolicy(queueSize) to change how many messages it compares
     sync_.reset(new Sync(MySyncPolicy(QUEUE_SIZE), colorMsg_, depthMsg_));
@@ -47,7 +47,8 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
     try
     {
         cv_color_ptr = cv_bridge::toCvCopy(colorMsg, sensor_msgs::image_encodings::BGR8);
-        cv_depth_ptr = cv_bridge::toCvCopy(depthMsg, sensor_msgs::image_encodings::TYPE_16UC1);
+        cv_depth_ptr = cv_bridge::toCvCopy(depthMsg, sensor_msgs::image_encodings::TYPE_32FC1);
+        //cv_depth_ptr = cv_bridge::toCvCopy(depthMsg);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -55,12 +56,17 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
         return;
     }
 
+    
+    //std::cout << cv_depth_ptr->image << std::endl;
+
+    //cv::imshow("teemp",cv_depth_ptr->image);
+    //cv::waitKey(1);
     findRedBlob(cv_color_ptr, cv_depth_ptr);
     ROS_INFO_STREAM("brick_found_: " << brick_found_);
 
 };
 
-void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth)
+bool BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth)
 {
   // Variables
   cv::Mat image,mask1,mask2,mask3;
@@ -117,19 +123,20 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_
   // If keypoints is filled then brick is found
   if (keypoints_.empty()) brick_found_ = false;
   else {
-      brick_found_ = true;
-      std_msgs::Bool brick_found;
-      brick_found.data = true;
-      brick_found_pub_.publish(brick_found);
+    //calculate waypoint here
+    //if(brick_found_ == false) findXYZ(keypoints_[0], cv_ptr_depth);
+    findXYZ(keypoints_[0], cv_ptr_depth);
 
-      //calculate waypoint here
-      findXYZ(keypoints_[0], cv_ptr_depth);
+    brick_found_ = true;
+    std_msgs::Bool brick_found;
+    brick_found.data = true;
+    brick_found_pub_.publish(brick_found);
   }
 
   // Published the blob image on rqt_image_view
   cv::drawKeypoints(image,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 
-  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
+  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", test_image_).toImageMsg();
   test_image_pub_.publish(msg);
 
   // Inform current state
@@ -142,13 +149,13 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint, const cv_
     int v = keypoint.pt.y;
 
     //get depth
-    unsigned short depth = cv_ptr_depth->image.at<unsigned short>(cv::Point(u,v)) * (3000 / 255) + 500;
+    double depth = cv_ptr_depth->image.at<double>(cv::Point(u,v))*100;// * (3000 / 255) + 500;
 
     // get XYZ using intrinsic parameters of camera
-    double X = depth*(u - PRINCIPAL_POINT_X) / FOCAL_LENGTH_X;
-    double Y = depth*(v - PRINCIPAL_POINT_Y) / FOCAL_LENGTH_Y;
+    double X = (depth*((u - PRINCIPAL_POINT_X)/1000)) / (FOCAL_LENGTH_X/1000);
+    double Y = (depth*((v - PRINCIPAL_POINT_Y)/1000)) / (FOCAL_LENGTH_Y/1000);
 
-    geometry_msgs::PoseStamped brick_pose;
+    std::cout << "x :" << X << " y : " << Y << " depth : " << unsigned(depth) << std::endl;
 
     //get transfrom from map to camera link
     //convert XYZ point from camera to pose
@@ -176,7 +183,8 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint, const cv_
     tf2::Vector3 finaltransl = mapToPose.getOrigin();
     tf2::Quaternion finalrot = mapToPose.getRotation();
 
-    geometry_msgs::PoseStamped brickPose;
+    geometry_msgs::PoseStamped brick_pose;
+
     brick_pose.pose.position.x = finaltransl.getX();
     brick_pose.pose.position.y = finaltransl.getY();
     brick_pose.pose.position.z = finaltransl.getZ();
@@ -186,7 +194,9 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint, const cv_
     brick_pose.pose.orientation.z = finalrot.getZ();
     brick_pose.pose.orientation.w = finalrot.getW();    
 
-    std::cout << brick_pose << std::endl;
+    //std::cout << brick_pose << std::endl;
+
+    return brick_pose;
 };
 
 bool BrickSearch::fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame) 
