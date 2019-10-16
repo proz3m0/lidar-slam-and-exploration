@@ -18,11 +18,17 @@ find_package(catkin REQUIRED COMPONENTS
         std_srvs
         actionlib
         move_base_msgs
+		  tf2
+	  tf2_eigen
+	  tf2_geometry_msgs
+	  tf2_msgs
+	  tf2_sensor_msgs
         )
 
 catkin_package()
 
 add_executable(brick_search
+        src/main.cpp
         src/brick_search.cpp
         )
 
