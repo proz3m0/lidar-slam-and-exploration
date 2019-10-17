@@ -4,11 +4,40 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
 {
     ROS_INFO("Brick search started");
 
+    // Wait for "static_map" service to be available
+    ROS_INFO("Waiting for \"static_map\" service...");
+    ros::service::waitForService("static_map");
+
+    // Get the map
+    nav_msgs::GetMap get_map{};
+
+    if (!ros::service::call("static_map", get_map))
+    {
+        ROS_ERROR("Unable to get map");
+        ros::shutdown();
+    }
+    else
+    {
+        map_ = get_map.response.map;
+        ROS_INFO("Map received");
+    }
+
+    // This allows you to access the map data as an OpenCV image
+    map_image_ = cv::Mat(map_.info.height, map_.info.width, CV_8U, &map_.data.front());
+
+    // Wait for the transform to be become available
+    ROS_INFO("Waiting for transform from \"map\" to \"base_link\"");
+    while (ros::ok() && !tf2_buffer_.canTransform("map", "base_link", ros::Time(0.)))
+    {
+        ros::Duration(0.1).sleep();
+    }
+    ROS_INFO("Transform available");
+
     colorMsg_.subscribe(nh_,"/camera/rgb/image_raw",1);
     depthMsg_.subscribe(nh_,"/camera/depth/image_raw",1);
 
     std::string pc_sub_topic;
-    nh_private_.param<std::string>("pc_topic", pc_sub_topic, "/camera/depth_registered/points");
+    nh_private_.param<std::string>("pc_topic", pc_sub_topic, "/camera/depth/points");
     nh_private_.param<std::string>("base_frame", camera_frame_, "camera_rgb_optical_frame");
     nh_private_.param<std::string>("map_frame", map_frame_, "map");
 
@@ -24,6 +53,11 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
     pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
 
     pc_sub_ = nh_.subscribe<sensor_msgs::PointCloud2>(pc_sub_topic, 1, &BrickSearch::pcCallback, this);
+
+    // Action client for "move_base"
+    ROS_INFO("Waiting for \"move_base\" action...");
+    move_base_action_client_.waitForServer();
+    ROS_INFO("\"move_base\" action available");
 
     // Publishing an image to "/image/test" topic
     test_image_pub_ = it_.advertise("/image/test", 1);
@@ -60,7 +94,6 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
 
 void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
 {
-    ROS_INFO("find blob");
     // Variables
     cv::Mat image,mask1,mask2,mask3;
 
@@ -118,8 +151,7 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
     else
     {
       //calculate waypoint here
-      if(brick_found_ == false) BrickSearch::findXYZ(keypoints_[0]);
-
+      BrickSearch::findXYZ(keypoints_[0]);
       brick_found_ = true;
       std_msgs::Bool brick_found;
       brick_found.data = true;
@@ -129,7 +161,10 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
     // Published the blob image on rqt_image_view
     cv::drawKeypoints(image,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 
-    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
+    //sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
+
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "8uc1", map_image_).toImageMsg();
+
     test_image_pub_.publish(msg);
 };
 
@@ -148,20 +183,52 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
     // gets pose from pixel
     geometry_msgs::PoseStamped brick_pose;
 
-    // ensures valid orientation
-    brick_pose.pose.orientation.w = 1.0;
-
     // gets index from point cloud
     int index = col * cloud->width + row;
-    brick_pose.pose.position.x = cloud->points[index].x;
-    brick_pose.pose.position.y = cloud->points[index].y;
-    brick_pose.pose.position.z = cloud->points[index].z;
+    //brick_pose.pose.position.x = cloud->points[index].x;
+    //brick_pose.pose.position.y = cloud->points[index].y;
+    //brick_pose.pose.position.z = cloud->points[index].z;
+
+    brick_pose.pose.position.x = -1.5;
+    brick_pose.pose.position.y = 0.0;
 
     // transforms pose to map frame
     geometry_msgs::TransformStamped tf;
     if(!BrickSearch::fetchTransform(tf, map_frame_, pc_msg_->header.frame_id))ROS_ERROR("TF Failed");
     tf2::doTransform(brick_pose, brick_pose, tf);
     brick_pose.header.frame_id = map_frame_;
+
+    ROS_INFO_STREAM("Brick_pose:\n" << "x: " << brick_pose.pose.position.x
+                                    << "\ny: " << brick_pose.pose.position.y
+                                    << "\nz: " << brick_pose.pose.position.z);
+
+    // ensures valid orientation
+    brick_pose.pose.orientation.x = 0.0;
+    brick_pose.pose.orientation.y = 0.0;
+    brick_pose.pose.orientation.z = 0.0;
+    brick_pose.pose.orientation.w = 1.0;
+
+    // Send a goal to "move_base" with "move_base_action_client_"
+    move_base_msgs::MoveBaseActionGoal action_goal{};
+    action_goal.goal.target_pose = brick_pose;
+    ROS_INFO("Sending goal...");
+    move_base_action_client_.sendGoal(action_goal.goal);
+
+    // This loop repeats until ROS shuts down, you probably want to put all your code in here
+    while (ros::ok())
+    {
+        // Get the state of the goal
+        actionlib::SimpleClientGoalState state = move_base_action_client_.getState();
+        if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
+        {
+          // Print the state of the goal
+          ROS_INFO_STREAM(state.getText());
+          // Shutdown when done
+          ros::shutdown();
+        }
+        // Delay so the loop doesn't run too fast
+        ros::Duration(0.2).sleep();
+    }
     return brick_pose;
 };
 

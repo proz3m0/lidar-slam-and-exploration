@@ -7,6 +7,7 @@
 #include <atomic>
 #include <math.h>
 #include <ros/ros.h>
+#include <std_srvs/Empty.h>
 
 //MESSAGES
 #include <sensor_msgs/PointCloud2.h>
@@ -46,6 +47,10 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl/filters/voxel_grid.h>
 
+//MOVEBASE
+#include <nav_msgs/GetMap.h>
+#include <actionlib/client/simple_action_client.h>
+#include <move_base_msgs/MoveBaseAction.h>
 
 static const uint QUEUE_SIZE = 10;
 typedef pcl::PointXYZ Point;
@@ -88,6 +93,8 @@ public:
     geometry_msgs::PoseStamped findXYZ(cv::KeyPoint keypoint);
 
 protected:
+    nav_msgs::OccupancyGrid map_{};
+    cv::Mat map_image_{};
 
     ros::NodeHandle nh_;
     ros::NodeHandle nh_private_;
@@ -106,7 +113,10 @@ protected:
     typedef message_filters::Synchronizer<MySyncPolicy> Sync;
     boost::shared_ptr<Sync> sync_;
 
-    ///TF2 stuff
+    // Action client
+    actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> move_base_action_client_{ "move_base", true };
+
+    //TF2 stuff
     tf2_ros::Buffer tf2_buffer_;
     tf2_ros::TransformListener tf2_listener_;
     std::string camera_frame_;
