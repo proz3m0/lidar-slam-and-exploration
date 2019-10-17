@@ -7,6 +7,8 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
     colorMsg_.subscribe(nh_,"/camera/rgb/image_raw",1);
     depthMsg_.subscribe(nh_,"/camera/depth/image_raw",1);
 
+    std::string pc_sub_topic;
+    nh_private_.param<std::string>("pc_topic", pc_sub_topic, "/camera/depth_registered/points");
     nh_private_.param<std::string>("base_frame", camera_frame_, "camera_rgb_optical_frame");
     nh_private_.param<std::string>("map_frame", map_frame_, "map");
 
@@ -21,33 +23,30 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
 
     pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
 
-    // Publishing an image to "/map_image/fbe" topic
-    test_image_pub_ = it_.advertise("/map_image/test", 1);
-    brick_found_pub_ = nh.advertise<std_msgs::Bool>("/brick_found", 10);
+    pc_sub_ = nh_.subscribe<sensor_msgs::PointCloud2>(pc_sub_topic, 1, &BrickSearch::pcCallback, this);
 
+    // Publishing an image to "/image/test" topic
+    test_image_pub_ = it_.advertise("/image/test", 1);
+    brick_found_pub_ = nh.advertise<std_msgs::Bool>("/brick_found", 10);
 };
 
 BrickSearch::~BrickSearch(){};
 
 void BrickSearch::amclPoseCallBack(const geometry_msgs::PoseWithCovarianceStamped& pose_msg)
-{
-  
-  poseBuffer_.mutex_.lock();
-  poseBuffer_.pose = pose_msg.pose.pose;
-  poseBuffer_.mutex_.unlock();
-  
-}
+{ 
+    poseBuffer_.mutex_.lock();
+    poseBuffer_.pose = pose_msg.pose.pose;
+    poseBuffer_.mutex_.unlock();
+};
 
 void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const sensor_msgs::ImageConstPtr& depthMsg)
 {   
     //Grab our images from messages
     cv_bridge::CvImagePtr cv_color_ptr;
-    cv_bridge::CvImagePtr cv_depth_ptr;
 
     try
     {
         cv_color_ptr = cv_bridge::toCvCopy(colorMsg, sensor_msgs::image_encodings::BGR8);
-        cv_depth_ptr = cv_bridge::toCvCopy(depthMsg, sensor_msgs::image_encodings::TYPE_16UC1);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -56,157 +55,133 @@ void BrickSearch::syncCallBack(const sensor_msgs::ImageConstPtr& colorMsg, const
     }
 
     ROS_INFO_STREAM("brick_found_: " << brick_found_);
-    findRedBlob(cv_color_ptr, cv_depth_ptr);
-
-
+    findRedBlob(cv_color_ptr);
 };
 
-void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth)
+void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
 {
-  ROS_INFO("find blob");
-  // Variables
-  cv::Mat image,mask1,mask2,mask3;
+    ROS_INFO("find blob");
+    // Variables
+    cv::Mat image,mask1,mask2,mask3;
 
-  // Convert that frame to seen color
-  cv::cvtColor(cv_ptr_rgb->image,image,cv::COLOR_BGR2RGB);
+    // Convert that frame to seen color
+    cv::cvtColor(cv_ptr_rgb->image,image,cv::COLOR_BGR2RGB);
 
-  // Convert to hsv
-  cvtColor(cv_ptr_rgb->image, imageHsv_, cv::COLOR_BGR2HSV);
-    
-  // Creating masks to detect the upper and lower red color.
-  cv::inRange(imageHsv_,cv:: Scalar(0, 120, 70),cv::Scalar(10, 255, 255), mask1);
-  cv::inRange(imageHsv_,cv::Scalar(170, 120, 70),cv::Scalar(180, 255, 255), mask2);
-    
-  // Generate the final mask
-  mask1 = mask1 + mask2;
-  mask3 = mask1;
-  cv::bitwise_not(mask1,mask1);
-  cv::copyMakeBorder(mask1,mask1,1,1,1,1,cv::BORDER_CONSTANT,255);
+    // Convert to hsv
+    cvtColor(cv_ptr_rgb->image, imageHsv_, cv::COLOR_BGR2HSV);
 
-  // Setup SimpleBlobDetector parameters.
-  cv::SimpleBlobDetector::Params params;
+    // Creating masks to detect the upper and lower red color.
+    cv::inRange(imageHsv_,cv:: Scalar(0, 120, 70),cv::Scalar(10, 255, 255), mask1);
+    cv::inRange(imageHsv_,cv::Scalar(170, 120, 70),cv::Scalar(180, 255, 255), mask2);
 
-  // Change thresholds
-  params.minThreshold = 10;
-  params.thresholdStep = 10;
-  params.maxThreshold = 220;
+    // Generate the final mask
+    mask1 = mask1 + mask2;
+    mask3 = mask1;
+    cv::bitwise_not(mask1,mask1);
+    cv::copyMakeBorder(mask1,mask1,1,1,1,1,cv::BORDER_CONSTANT,255);
 
-  // Filter by Color
-  params.filterByColor = true;
-  params.blobColor = 0;
+    // Setup SimpleBlobDetector parameters.
+    cv::SimpleBlobDetector::Params params;
 
-  // Filter by Area.
-  params.filterByArea = true;
-  params.minArea = 1000;
-  params.maxArea = 2076601;
+    // Change thresholds
+    params.minThreshold = 10;
+    params.thresholdStep = 10;
+    params.maxThreshold = 220;
 
-  // Filter by Circularity
-  params.filterByCircularity = false;
+    // Filter by Color
+    params.filterByColor = true;
+    params.blobColor = 0;
 
-  // Filter by Convexity
-  params.filterByConvexity = false;
+    // Filter by Area.
+    params.filterByArea = true;
+    params.minArea = 1000;
+    params.maxArea = 2076601;
 
-  // Filter by Inertia
-  params.filterByInertia = false;
+    // Filter by Circularity
+    params.filterByCircularity = false;
 
-  // Set up the detector with parameters
-  cv::Ptr<cv::SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
-    
-  // Detect Blobs
-  detector->detect(mask1,keypoints_);
-  //ROS_INFO_STREAM("Size of keypoints: " << keypoints_.size());
-    
-  // If keypoints is filled then brick is found
-  if (keypoints_.empty()) brick_found_ = false;
-  else {
+    // Filter by Convexity
+    params.filterByConvexity = false;
+
+    // Filter by Inertia
+    params.filterByInertia = false;
+
+    // Set up the detector with parameters
+    cv::Ptr<cv::SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
+
+    // Detect Blobs
+    detector->detect(mask1,keypoints_);
+    //ROS_INFO_STREAM("Size of keypoints: " << keypoints_.size());
+
+    // If keypoints is filled then brick is found
+    if (keypoints_.empty()) brick_found_ = false;
+    else
+    {
       //calculate waypoint here
-      if(brick_found_ == false) findXYZ(keypoints_[0], cv_ptr_depth);
+      if(brick_found_ == false) BrickSearch::findXYZ(keypoints_[0]);
 
       brick_found_ = true;
       std_msgs::Bool brick_found;
       brick_found.data = true;
       brick_found_pub_.publish(brick_found);
-  }
+    }
 
-  // Published the blob image on rqt_image_view
-  cv::drawKeypoints(image,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+    // Published the blob image on rqt_image_view
+    cv::drawKeypoints(image,keypoints_,test_image_, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 
-  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
-  test_image_pub_.publish(msg);
-
-  // Inform current state
-  //ROS_INFO("brickIGotYouInMySight");
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test_image_).toImageMsg();
+    test_image_pub_.publish(msg);
 };
 
-geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint, const cv_bridge::CvImagePtr& cv_ptr_depth)
+geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
 {
-    int u = keypoint.pt.x;
-    int v = keypoint.pt.y;
+    int row = keypoint.pt.x;
+    int col = keypoint.pt.y;
 
-    //get depth
-    unsigned short depth = cv_ptr_depth->image.at<unsigned short>(cv::Point(u,v)) * (3000 / 255) + 500;
+    // ros msg to pcl
+    PointCloud::Ptr cloud(new PointCloud);
+    pcl::fromROSMsg(*pc_msg_, *cloud);
 
-    // get XYZ using intrinsic parameters of camera
-    double X = depth*(u - PRINCIPAL_POINT_X) / FOCAL_LENGTH_X;
-    double Y = depth*(v - PRINCIPAL_POINT_Y) / FOCAL_LENGTH_Y;
+    //checks if cloud is organised
+    if(!cloud->isOrganized()) ROS_ERROR("POINT CLOUD NOT ORGANISED");
 
+    // gets pose from pixel
     geometry_msgs::PoseStamped brick_pose;
 
-    //get transfrom from map to camera link
-    //convert XYZ point from camera to pose
-    //multiply the transform together
+    // ensures valid orientation
+    brick_pose.pose.orientation.w = 1.0;
 
-    tf2::Transform mapToCameraLink;
-    fetchTransform(mapToCameraLink, map_frame_, camera_frame_);
+    // gets index from point cloud
+    int index = col * cloud->width + row;
+    brick_pose.pose.position.x = cloud->points[index].x;
+    brick_pose.pose.position.y = cloud->points[index].y;
+    brick_pose.pose.position.z = cloud->points[index].z;
 
-    tf2::Transform cameraToBrick;
-
-    tf2::Vector3 origin(X,Y,depth);
-
-    poseBuffer_.mutex_.lock();
-    tf2::Quaternion quad(poseBuffer_.pose.orientation.x, 
-    poseBuffer_.pose.orientation.y,poseBuffer_.pose.orientation.z, poseBuffer_.pose.orientation.w);
-    poseBuffer_.mutex_.unlock();
-
-    cameraToBrick.setOrigin(origin);
-    cameraToBrick.setRotation(quad);
-
-    tf2::Transform mapToPose;
-    
-    mapToPose = mapToCameraLink * cameraToBrick;
-
-    tf2::Vector3 finaltransl = mapToPose.getOrigin();
-    tf2::Quaternion finalrot = mapToPose.getRotation();
-
-    geometry_msgs::PoseStamped brickPose;
-    brick_pose.pose.position.x = finaltransl.getX();
-    brick_pose.pose.position.y = finaltransl.getY();
-    brick_pose.pose.position.z = finaltransl.getZ();
-
-    brick_pose.pose.orientation.x = finalrot.getX();
-    brick_pose.pose.orientation.y = finalrot.getY();
-    brick_pose.pose.orientation.z = finalrot.getZ();
-    brick_pose.pose.orientation.w = finalrot.getW();    
-
-    std::cout << brick_pose << std::endl;
-    ROS_INFO("Here");
-
+    // transforms pose to map frame
+    geometry_msgs::TransformStamped tf;
+    if(!BrickSearch::fetchTransform(tf, map_frame_, pc_msg_->header.frame_id))ROS_ERROR("TF Failed");
+    tf2::doTransform(brick_pose, brick_pose, tf);
+    brick_pose.header.frame_id = map_frame_;
     return brick_pose;
 };
 
-bool BrickSearch::fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame) 
+bool BrickSearch::fetchTransform(geometry_msgs::TransformStamped &transform, std::string target_frame, std::string source_frame)
 {
-    geometry_msgs::TransformStamped local_transformStamped;
-    tf2::Stamped<tf2::Transform> tf_stamped;
-    try {
-        local_transformStamped = tf2_buffer_.lookupTransform(target_frame, source_frame,ros::Time(0));
-        tf2::fromMsg(local_transformStamped, tf_stamped);
-        transform.setRotation(tf_stamped.getRotation());
-        transform.setOrigin(tf_stamped.getOrigin());
+    try
+    {
+        transform = tf2_buffer_.lookupTransform(target_frame, source_frame,ros::Time(0), ros::Duration(1.0));
         return true;
     }
-    catch (tf2::TransformException &ex) {
+    catch (tf2::TransformException &ex)
+    {
         ROS_WARN("%s", ex.what());
         return false;
     }
+};
+
+
+void BrickSearch::pcCallback(const sensor_msgs::PointCloud2ConstPtr &pc_msg)
+{
+    // stores pc pointer so that when the pose is needed it can easily be extracted
+    pc_msg_ = pc_msg;
 };

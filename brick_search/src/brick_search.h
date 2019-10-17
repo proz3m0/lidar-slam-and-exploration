@@ -1,26 +1,31 @@
 #include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <random>
 #include <mutex>
 #include <atomic>
+#include <math.h>
+#include <ros/ros.h>
 
-#include "ros/ros.h"
-#include "std_msgs/Bool.h"
-#include "sensor_msgs/Image.h"
-#include "geometry_msgs/PoseWithCovarianceStamped.h"
-#include "geometry_msgs/PoseStamped.h"
-#include "sensor_msgs/CameraInfo.h"
+//MESSAGES
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/Image.h>
+#include <std_msgs/Bool.h>
+#include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TransformStamped.h>
 
-#include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2/LinearMath/Transform.h>
-
+//OPENCV
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
-#include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <geometry_msgs/PointStamped.h>
 #include <opencv2/videoio.hpp>
 #include <opencv2/video.hpp>
 
@@ -29,7 +34,23 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+//TRANSFOM 2
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2/LinearMath/Transform.h>
+
+//POINTCLOUD
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/filters/voxel_grid.h>
+
+
 static const uint QUEUE_SIZE = 10;
+typedef pcl::PointXYZ Point;
+typedef pcl::PointCloud<Point> PointCloud;
+
 
 /*  Intrinsic camera matrix
 #     [fx  0 cx]
@@ -58,11 +79,13 @@ public:
 
     void cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& info_msg_ptr);
 
-    void findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb, const cv_bridge::CvImagePtr& cv_ptr_depth);
-    
-    bool fetchTransform(tf2::Transform &transform, std::string target_frame, std::string source_frame);
+    void pcCallback(const sensor_msgs::PointCloud2ConstPtr &pc_msg);
 
-    geometry_msgs::PoseStamped findXYZ(cv::KeyPoint keypoint, const cv_bridge::CvImagePtr& cv_ptr_depth);
+    void findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb);
+    
+    bool fetchTransform(geometry_msgs::TransformStamped &transform, std::string target_frame, std::string source_frame);
+
+    geometry_msgs::PoseStamped findXYZ(cv::KeyPoint keypoint);
 
 protected:
 
@@ -88,6 +111,7 @@ protected:
     tf2_ros::TransformListener tf2_listener_;
     std::string camera_frame_;
     std::string map_frame_;
+    sensor_msgs::PointCloud2ConstPtr pc_msg_;
 
     //amcl pose buffer
     struct PoseDataBuffer
@@ -113,5 +137,6 @@ protected:
     // ros subscriber
     ros::Subscriber amcl_pose_sub_{};
     ros::Subscriber camera_info_sub_{};
+    ros::Subscriber pc_sub_{};
 
 };
