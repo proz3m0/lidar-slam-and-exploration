@@ -185,10 +185,12 @@ public:
     *********************************************************************/
     /** \brief callback function for brick found */
     void mapCallback(const nav_msgs::OccupancyGridConstPtr &map_msg) {
+
         if(!init_) initOGMap(map_msg);
     }
     /** \brief callback function for brick found */
     void startCallback(const std_msgs::BoolConstPtr &start_msg) {
+        ROS_INFO("CAMERA OG: start");
         if(start_msg->data) start_ = true;
     }
     /** \brief callback function for brick found */
@@ -223,7 +225,9 @@ public:
         ros::Duration(0.5).sleep();
 
         // Busy waiting for initialisation
-        while(!init_ || !start_);
+        while(!init_ /*|| !start_*/);
+
+        ROS_INFO("CAMERA OGMAP STARTED");
 
         ros::Rate rate_limiter(cam_rate_);
         while(ros::ok()) {

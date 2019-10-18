@@ -36,7 +36,7 @@
 	</node>
 
 	<!-- CAMERA OGMAP -->
-	<node name="CameraOGMap"           pkg="camera_ogmap" type="camera_ogmap_node" >
+	<node name="CameraOGMap"           pkg="camera_ogmap" type="camera_ogmap_node" output="screen">
 		<param name="map_frame"             type="string"       value="$(arg map_frame)"/>
 		<param name="camera_link_frame"     type="string"       value="$(arg camera_link_frame)"/>
 		<param name="map_topic"             type="string"       value="$(arg map_topic)"/>

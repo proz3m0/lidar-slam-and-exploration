@@ -149,4 +149,7 @@ protected:
     ros::Subscriber camera_info_sub_{};
     ros::Subscriber pc_sub_{};
 
+    ros::Time brick_found_time_;
+    bool brick_time_set_;
+
 };

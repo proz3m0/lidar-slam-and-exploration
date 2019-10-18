@@ -1,6 +1,6 @@
 #include "brick_search.h"
 
-BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh),nh_(nh),nh_private_(nh_private),tf2_listener_(tf2_buffer_)
+BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):brick_time_set_(false), it_(nh),nh_(nh),nh_private_(nh_private),tf2_listener_(tf2_buffer_)
 {
     ROS_INFO("Brick search started");
 
@@ -150,12 +150,18 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
     if (keypoints_.empty()) brick_found_ = false;
     else
     {
-      //calculate waypoint here
-      BrickSearch::findXYZ(keypoints_[0]);
-      brick_found_ = true;
-      std_msgs::Bool brick_found;
-      brick_found.data = true;
-      brick_found_pub_.publish(brick_found);
+        if(!brick_time_set_) {
+            brick_found_ = true;
+            std_msgs::Bool brick_found;
+            brick_found.data = true;
+            brick_found_pub_.publish(brick_found);
+            brick_found_time_ = ros::Time::now();
+            brick_time_set_ = true;
+        }
+        if(ros::Time::now() - brick_found_time_ > ros::Duration(3.0)) {
+            //calculate waypoint here
+            BrickSearch::findXYZ(keypoints_[0]);
+        }
     }
 
     // Published the blob image on rqt_image_view
@@ -170,6 +176,8 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
 
 geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
 {
+    // delay to get new point clou
+
     int row = keypoint.pt.x;
     int col = keypoint.pt.y;
 
@@ -179,6 +187,7 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
 
     //checks if cloud is organised
     if(!cloud->isOrganized()) ROS_ERROR("POINT CLOUD NOT ORGANISED");
+    ROS_INFO("PC Height: %d, PC Width: %d", cloud->height, cloud->width);
 
     // gets pose from pixel
     geometry_msgs::PoseStamped brick_pose;
@@ -251,4 +260,5 @@ void BrickSearch::pcCallback(const sensor_msgs::PointCloud2ConstPtr &pc_msg)
 {
     // stores pc pointer so that when the pose is needed it can easily be extracted
     pc_msg_ = pc_msg;
+    ROS_INFO("PC SAVED");
 };
