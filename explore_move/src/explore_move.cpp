@@ -246,6 +246,10 @@ public:
         // cancels goal
         cancel_pose_pub_.publish(actionlib_msgs::GoalID{});
         ROS_INFO("Explore Move: pathFollowThread: Brick Found or Exploration Complete");
+        // if brick is not found use frontier exploration to explore the rest of the maze
+        if(!brick_found_) {
+
+        }
     }
 };
 

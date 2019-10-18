@@ -1,4 +1,4 @@
-image: ./map_real.pgm
+image: /home/mitch/ar_ws-old/src/lidar-slam-and-exploration/ar_turtlebot3/maps/map_real.pgm
 resolution: 0.050000
 origin: [-10.000000, -10.000000, 0.000000]
 negate: 0
