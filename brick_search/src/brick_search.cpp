@@ -184,7 +184,7 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
     geometry_msgs::PoseStamped brick_pose;
 
     // gets index from point cloud
-    //int index = col * cloud->width + row;
+    int index = col * cloud->width + row;
     brick_pose.pose.position.x = cloud->points[index].x;
     brick_pose.pose.position.y = cloud->points[index].y;
     brick_pose.pose.position.z = cloud->points[index].z;

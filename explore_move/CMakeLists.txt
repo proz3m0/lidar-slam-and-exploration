@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_sensor_msgs
   maze_planner
   actionlib_msgs
+  camera_ogmap
 )
 
 ## System dependencies are found with CMake's conventions
