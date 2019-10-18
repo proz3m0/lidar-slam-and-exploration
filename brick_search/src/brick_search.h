@@ -90,7 +90,7 @@ public:
     
     bool fetchTransform(geometry_msgs::TransformStamped &transform, std::string target_frame, std::string source_frame);
 
-    geometry_msgs::PoseStamped findXYZ(cv::KeyPoint keypoint);
+    void findXYZ(cv::KeyPoint keypoint);
 
 protected:
     nav_msgs::OccupancyGrid map_{};

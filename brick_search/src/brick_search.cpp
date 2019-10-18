@@ -65,7 +65,6 @@ BrickSearch::BrickSearch(ros::NodeHandle nh, ros::NodeHandle nh_private):it_(nh)
 };
 
 BrickSearch::~BrickSearch(){};
-
 void BrickSearch::amclPoseCallBack(const geometry_msgs::PoseWithCovarianceStamped& pose_msg)
 { 
     poseBuffer_.mutex_.lock();
@@ -168,7 +167,7 @@ void BrickSearch::findRedBlob(const cv_bridge::CvImagePtr& cv_ptr_rgb)
     test_image_pub_.publish(msg);
 };
 
-geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
+void BrickSearch::findXYZ(cv::KeyPoint keypoint)
 {
     int row = keypoint.pt.x;
     int col = keypoint.pt.y;
@@ -185,12 +184,9 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
 
     // gets index from point cloud
     int index = col * cloud->width + row;
-    //brick_pose.pose.position.x = cloud->points[index].x;
-    //brick_pose.pose.position.y = cloud->points[index].y;
-    //brick_pose.pose.position.z = cloud->points[index].z;
-
-    brick_pose.pose.position.x = -1.5;
-    brick_pose.pose.position.y = 0.0;
+    brick_pose.pose.position.x = cloud->points[index].x;
+    brick_pose.pose.position.y = cloud->points[index].y;
+    brick_pose.pose.position.z = cloud->points[index].z;
 
     // transforms pose to map frame
     geometry_msgs::TransformStamped tf;
@@ -198,15 +194,13 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
     tf2::doTransform(brick_pose, brick_pose, tf);
     brick_pose.header.frame_id = map_frame_;
 
-    ROS_INFO_STREAM("Brick_pose:\n" << "x: " << brick_pose.pose.position.x
-                                    << "\ny: " << brick_pose.pose.position.y
-                                    << "\nz: " << brick_pose.pose.position.z);
-
-    // ensures valid orientation
     brick_pose.pose.orientation.x = 0.0;
     brick_pose.pose.orientation.y = 0.0;
     brick_pose.pose.orientation.z = 0.0;
     brick_pose.pose.orientation.w = 1.0;
+
+    ROS_INFO_STREAM("Brick_pose:\n" << "x: " << brick_pose.pose.position.x
+                                    << "\ny: " << brick_pose.pose.position.y);
 
     // Send a goal to "move_base" with "move_base_action_client_"
     move_base_msgs::MoveBaseActionGoal action_goal{};
@@ -229,7 +223,6 @@ geometry_msgs::PoseStamped BrickSearch::findXYZ(cv::KeyPoint keypoint)
         // Delay so the loop doesn't run too fast
         ros::Duration(0.2).sleep();
     }
-    return brick_pose;
 };
 
 bool BrickSearch::fetchTransform(geometry_msgs::TransformStamped &transform, std::string target_frame, std::string source_frame)
